@@ -150,9 +150,14 @@ async def mock_generate_course(topic: str, difficulty: str, queue: asyncio.Queue
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup — initialize Datadog observability
+    try:
+        from observability import init_observability
+        init_observability()
+    except ImportError:
+        pass
     yield
-    # Shutdown — clean up queues
+    # Shutdown — clean up
     _courses.clear()
 
 

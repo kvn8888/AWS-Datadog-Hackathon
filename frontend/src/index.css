@@ -6,54 +6,39 @@
 
 @layer base {
   :root {
-    --background: 220 14% 96%;
-    --foreground: 220 20% 14%;
+    --background: 240 14% 6%;
+    --foreground: 220 15% 92%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 20% 14%;
+    --card: 238 18% 10%;
+    --card-foreground: 220 15% 92%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 14%;
+    --popover: 238 18% 10%;
+    --popover-foreground: 220 15% 92%;
 
-    --primary: 220 65% 48%;
+    --primary: 244 76% 66%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 92%;
-    --secondary-foreground: 220 20% 14%;
+    --secondary: 238 18% 15%;
+    --secondary-foreground: 220 10% 65%;
 
-    --muted: 220 14% 92%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 238 18% 14%;
+    --muted-foreground: 220 10% 50%;
 
-    --accent: 220 14% 92%;
-    --accent-foreground: 220 20% 14%;
+    --accent: 238 18% 18%;
+    --accent-foreground: 220 15% 90%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 88%;
-    --input: 220 13% 88%;
-    --ring: 220 65% 48%;
+    --border: 238 18% 16%;
+    --input: 238 18% 16%;
+    --ring: 244 76% 66%;
 
-    --radius: 6px;
+    --radius: 8px;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 20% 14%;
-    --sidebar-primary: 220 65% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 96%;
-    --sidebar-accent-foreground: 220 20% 14%;
-    --sidebar-border: 220 13% 88%;
-    --sidebar-ring: 220 65% 48%;
-
-    /* Severity — the only accent colors */
-    --severity-critical: 0 72% 51%;
-    --severity-warning: 36 100% 50%;
-    --severity-healthy: 142 60% 40%;
-    --severity-info: 220 65% 48%;
-
-    /* Surfaces */
-    --surface-elevated: 0 0% 100%;
-    --surface-overlay: 220 14% 98%;
+    --validated: 142 60% 45%;
+    --failed: 0 72% 58%;
+    --in-progress: 38 100% 55%;
   }
 }
 
@@ -80,30 +65,51 @@
     font-family: 'Inter', sans-serif;
   }
 
-  .font-body {
-    font-family: 'Inter', sans-serif;
-  }
-
   .font-mono {
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
-  /* Clean card style */
   .card-surface {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
   }
 
-  /* Subtle hover */
-  .hover-lift {
-    transition: box-shadow 0.15s ease;
-  }
-  .hover-lift:hover {
-    box-shadow: 0 1px 3px hsla(220, 20%, 14%, 0.06), 0 1px 2px hsla(220, 20%, 14%, 0.04);
+  .card-elevated {
+    background: hsl(238 18% 13%);
+    border: 1px solid hsl(238 18% 20%);
+    border-radius: var(--radius);
   }
 
-  /* Pulse dot for active incidents */
+  .text-validated {
+    color: hsl(var(--validated));
+  }
+
+  .text-failed {
+    color: hsl(var(--failed));
+  }
+
+  .text-in-progress {
+    color: hsl(var(--in-progress));
+  }
+
+  .bg-validated {
+    background: hsl(var(--validated));
+  }
+
+  .bg-failed {
+    background: hsl(var(--failed));
+  }
+
+  .border-validated {
+    border-color: hsl(var(--validated) / 0.3);
+  }
+
+  .border-failed {
+    border-color: hsl(var(--failed) / 0.3);
+  }
+
+  /* Pulse dot */
   .pulse-dot {
     animation: pulse-glow 2s ease-in-out infinite;
   }
@@ -113,39 +119,48 @@
     50% { opacity: 0.4; }
   }
 
-  /* Banner flash */
-  @keyframes banner-flash {
-    0%, 100% { background-color: transparent; }
-    50% { background-color: hsla(0, 72%, 51%, 0.04); }
-  }
-
-  .banner-flash {
-    animation: banner-flash 0.5s ease 2;
-  }
-
   /* Entrance animation */
   @keyframes fade-up {
-    from { opacity: 0; transform: translateY(4px); }
+    from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
   .animate-fade-up {
-    animation: fade-up 0.3s ease both;
+    animation: fade-up 0.35s ease both;
   }
 
-  .delay-1 { animation-delay: 30ms; }
-  .delay-2 { animation-delay: 60ms; }
-  .delay-3 { animation-delay: 90ms; }
-  .delay-4 { animation-delay: 120ms; }
-  .delay-5 { animation-delay: 150ms; }
+  .delay-1 { animation-delay: 50ms; }
+  .delay-2 { animation-delay: 100ms; }
+  .delay-3 { animation-delay: 150ms; }
+  .delay-4 { animation-delay: 200ms; }
+  .delay-5 { animation-delay: 250ms; }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(244 76% 72%), hsl(280 70% 68%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(244 76% 66% / 0.2);
+  }
 
   /* Scrollbar */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: hsla(220, 10%, 46%, 0.15); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: hsla(220, 10%, 46%, 0.25); }
+  ::-webkit-scrollbar-thumb { background: hsl(238 18% 22%); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(238 18% 30%); }
 
   ::selection {
-    background: hsla(220, 65%, 48%, 0.15);
+    background: hsl(244 76% 66% / 0.2);
   }
+
+  /* Log entry type colors */
+  .log-success { color: hsl(var(--validated)); }
+  .log-error { color: hsl(var(--failed)); }
+  .log-fix { color: hsl(var(--in-progress)); }
+  .log-info { color: hsl(220 10% 60%); }
 }

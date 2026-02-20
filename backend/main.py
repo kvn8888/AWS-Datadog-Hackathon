@@ -18,25 +18,18 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from streaming import emit_event, get_or_create_queue, sse_generator, cleanup_queue
+from models import GenerateRequest, GenerateResponse, RegenerateRequest, TestCodeRequest, TestCodeResponse
 
 load_dotenv()
 
-# ---------------------------------------------------------------------------
-# In-memory course store (replaced by DB in production)
-# ---------------------------------------------------------------------------
-_courses: dict[str, dict] = {}
-
-
-# ---------------------------------------------------------------------------
-# Request / Response schemas
-# ---------------------------------------------------------------------------
-class GenerateRequest(BaseModel):
-    topic: str
-    difficulty: str = "intermediate"
-
-
-class GenerateResponse(BaseModel):
-    courseId: str
+# Import orchestrator (real pipeline) — falls back to mock if agents aren't available
+try:
+    from orchestrator import generate_course as real_generate_course, regenerate_lesson, get_courses_store
+    _courses = get_courses_store()
+    USE_REAL_PIPELINE = True
+except ImportError:
+    _courses = {}
+    USE_REAL_PIPELINE = False
 
 
 # ---------------------------------------------------------------------------
@@ -181,11 +174,14 @@ app.add_middleware(
 # Routes
 # ---------------------------------------------------------------------------
 @app.post("/course/generate", response_model=GenerateResponse)
-async def generate_course(req: GenerateRequest):
+async def generate_course_endpoint(req: GenerateRequest):
     """Start course generation. Returns courseId immediately; generation runs in background."""
     course_id = str(uuid.uuid4())
     queue = get_or_create_queue(course_id)
-    asyncio.create_task(mock_generate_course(req.topic, req.difficulty, queue, course_id))
+    if USE_REAL_PIPELINE:
+        asyncio.create_task(real_generate_course(req.topic, req.difficulty, queue, course_id))
+    else:
+        asyncio.create_task(mock_generate_course(req.topic, req.difficulty, queue, course_id))
     return GenerateResponse(courseId=course_id)
 
 
@@ -209,12 +205,36 @@ async def get_course(course_id: str):
     course = _courses.get(course_id)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found or still generating")
+    # Return as dict for JSON serialization
+    if hasattr(course, "model_dump"):
+        return course.model_dump()
     return course
+
+
+@app.post("/course/{course_id}/lesson/{lesson_index}/regenerate")
+async def regenerate_lesson_endpoint(course_id: str, lesson_index: int, req: RegenerateRequest):
+    """Regenerate a specific lesson with custom instructions."""
+    if not USE_REAL_PIPELINE:
+        raise HTTPException(status_code=501, detail="Real pipeline not available")
+    queue = get_or_create_queue(f"{course_id}-regen-{lesson_index}")
+    asyncio.create_task(regenerate_lesson(course_id, lesson_index, req.instruction, queue))
+    return {"status": "regenerating", "courseId": course_id, "lessonIndex": lesson_index}
+
+
+@app.post("/course/test-code", response_model=TestCodeResponse)
+async def test_code_endpoint(req: TestCodeRequest):
+    """On-demand code testing via TestSprite / local execution."""
+    try:
+        from tools.testsprite import _run_code_locally
+        result = _run_code_locally(req.code, req.language)
+        return TestCodeResponse(**result)
+    except Exception as e:
+        return TestCodeResponse(passed=False, error=str(e))
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "learnforge"}
+    return {"status": "ok", "service": "learnforge", "pipeline": "real" if USE_REAL_PIPELINE else "mock"}
 
 
 # ---------------------------------------------------------------------------

@@ -248,6 +248,7 @@ async def health():
 # ---------------------------------------------------------------------------
 try:
     from strands import Agent
+    from strands.models.gemini import GeminiModel
     from ag_ui_strands import StrandsAgent, create_strands_app
     from fastapi import Request
     from starlette.responses import JSONResponse
@@ -258,6 +259,7 @@ try:
             "You help users generate verified micro-courses on any programming topic. "
             "For now, acknowledge requests and let the user know the system is being set up."
         ),
+        model=GeminiModel(model_id="gemini-3-flash-preview"),
     )
     _agui_agent = StrandsAgent(agent=_placeholder_agent, name="learnforge")
     copilotkit_app = create_strands_app(_agui_agent, "/")

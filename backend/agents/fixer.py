@@ -7,6 +7,7 @@ Output: Fixed code that passes validation
 
 import json
 from strands import Agent
+from strands.models.gemini import GeminiModel
 from tools.testsprite import run_testsprite
 
 FIXER_SYSTEM_PROMPT = """You are an expert Python developer who fixes broken code. Given code that failed validation and its error message, you must:
@@ -37,7 +38,7 @@ def create_fixer_agent() -> Agent:
     """Create and return the Fixer agent with TestSprite tool."""
     return Agent(
         system_prompt=FIXER_SYSTEM_PROMPT,
-        model="minimax.minimax-m2.1",
+        model=GeminiModel(model_id="gemini-3-flash-preview"),
         tools=[run_testsprite],
     )
 

@@ -7,6 +7,7 @@ Output: JSON list of LessonPlan objects
 
 import json
 from strands import Agent
+from strands.models.gemini import GeminiModel
 
 PLANNER_SYSTEM_PROMPT = """You are a curriculum design expert. Given a programming topic and difficulty level, create a structured micro-course curriculum.
 
@@ -32,7 +33,7 @@ def create_planner_agent() -> Agent:
     """Create and return the Planner agent."""
     return Agent(
         system_prompt=PLANNER_SYSTEM_PROMPT,
-        model="minimax.minimax-m2.1",
+        model=GeminiModel(model_id="gemini-3-flash-preview"),
     )
 
 

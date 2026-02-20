@@ -7,6 +7,7 @@ Output: ValidationResult with per-snippet pass/fail
 
 import json
 from strands import Agent
+from strands.models.gemini import GeminiModel
 from tools.testsprite import run_testsprite
 
 VALIDATOR_SYSTEM_PROMPT = """You are a ruthless code reviewer and test engineer. Your job is to validate every code example in a lesson by executing it.
@@ -33,7 +34,7 @@ def create_validator_agent() -> Agent:
     """Create and return the Validator agent with TestSprite tool."""
     return Agent(
         system_prompt=VALIDATOR_SYSTEM_PROMPT,
-        model="minimax.minimax-m2.1",
+        model=GeminiModel(model_id="gemini-3-flash-preview"),
         tools=[run_testsprite],
     )
 

@@ -7,6 +7,7 @@ Output: Complete Lesson JSON with explanation, code, quiz, audio_url, image_url
 
 import json
 from strands import Agent
+from strands.models.gemini import GeminiModel
 from tools.minimax import generate_narration
 
 CREATOR_SYSTEM_PROMPT = """You are an expert programming instructor creating lesson content for a verified micro-course.
@@ -40,7 +41,7 @@ def create_creator_agent() -> Agent:
     """Create and return the Creator agent with MiniMax TTS tool."""
     return Agent(
         system_prompt=CREATOR_SYSTEM_PROMPT,
-        model="minimax.minimax-m2.1",
+        model=GeminiModel(model_id="gemini-3-flash-preview"),
         tools=[generate_narration],
     )
 

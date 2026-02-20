@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 14% 96%;
+    --foreground: 220 20% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 14%;
+
+    --primary: 220 65% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 220 20% 14%;
+
+    --muted: 220 14% 92%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 220 14% 92%;
+    --accent-foreground: 220 20% 14%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 220 65% 48%;
+
+    --radius: 6px;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 20% 14%;
+    --sidebar-primary: 220 65% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 220 20% 14%;
+    --sidebar-border: 220 13% 88%;
+    --sidebar-ring: 220 65% 48%;
+
+    /* Severity — the only accent colors */
+    --severity-critical: 0 72% 51%;
+    --severity-warning: 36 100% 50%;
+    --severity-healthy: 142 60% 40%;
+    --severity-info: 220 65% 48%;
+
+    /* Surfaces */
+    --surface-elevated: 0 0% 100%;
+    --surface-overlay: 220 14% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Inter', sans-serif;
+  }
+
+  .font-body {
+    font-family: 'Inter', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  /* Clean card style */
+  .card-surface {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+  }
+
+  /* Subtle hover */
+  .hover-lift {
+    transition: box-shadow 0.15s ease;
+  }
+  .hover-lift:hover {
+    box-shadow: 0 1px 3px hsla(220, 20%, 14%, 0.06), 0 1px 2px hsla(220, 20%, 14%, 0.04);
+  }
+
+  /* Pulse dot for active incidents */
+  .pulse-dot {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Banner flash */
+  @keyframes banner-flash {
+    0%, 100% { background-color: transparent; }
+    50% { background-color: hsla(0, 72%, 51%, 0.04); }
+  }
+
+  .banner-flash {
+    animation: banner-flash 0.5s ease 2;
+  }
+
+  /* Entrance animation */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fade-up {
+    animation: fade-up 0.3s ease both;
+  }
+
+  .delay-1 { animation-delay: 30ms; }
+  .delay-2 { animation-delay: 60ms; }
+  .delay-3 { animation-delay: 90ms; }
+  .delay-4 { animation-delay: 120ms; }
+  .delay-5 { animation-delay: 150ms; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsla(220, 10%, 46%, 0.15); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsla(220, 10%, 46%, 0.25); }
+
+  ::selection {
+    background: hsla(220, 65%, 48%, 0.15);
+  }
+}

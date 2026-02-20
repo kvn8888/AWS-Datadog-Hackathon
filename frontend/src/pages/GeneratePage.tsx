@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, Zap, FlaskConical, Wrench, Check, X, ArrowRight, RefreshCw } from 'lucide-react';
 import type { AgentStatus, LogType } from '@/data/mockData';
 
+const BACKEND_URL = 'http://localhost:8000';
+
 interface AgentState {
   planner: AgentStatus;
   creator: AgentStatus;
@@ -77,6 +79,7 @@ function getAgentIcon(cfg: typeof agentConfig[0], status: AgentStatus) {
 export default function GeneratePage() {
   const [searchParams] = useSearchParams();
   const topic = searchParams.get('topic') || 'React Hooks';
+  const difficulty = searchParams.get('difficulty') || 'intermediate';
   const navigate = useNavigate();
 
   const [agents, setAgents] = useState<AgentState>({
@@ -89,8 +92,11 @@ export default function GeneratePage() {
   const [progress, setProgress] = useState(0);
   const [done, setDone] = useState(false);
   const [feedbackLoops, setFeedbackLoops] = useState(0);
+  const [courseId, setCourseId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const logIdRef = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef(0);
 
   function setAgent(id: keyof AgentState, status: AgentStatus) {
     setAgents(prev => ({ ...prev, [id]: status }));
@@ -101,82 +107,162 @@ export default function GeneratePage() {
     setLogs(prev => [...prev, { id: logIdRef.current, agent, type, text }]);
   }
 
+  function bumpProgress(min: number) {
+    progressRef.current = Math.max(progressRef.current, min);
+    setProgress(progressRef.current);
+  }
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
   useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const t = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
+    let es: EventSource | null = null;
+    let aborted = false;
 
-    // ─── Stage 1: Curriculum Planner ───────────────────────────
-    t(300, () => { setAgent('planner', 'active'); setProgress(5); });
-    t(800, () => addLog('planner', 'info', `Analyzing topic: "${topic}"...`));
-    t(1800, () => addLog('planner', 'success', 'Planned 6 lessons: useState, useEffect, useRef, useContext, useReducer, custom hooks'));
-    t(2600, () => addLog('planner', 'success', 'Estimated completion: 42 minutes — difficulty: beginner-friendly'));
-    t(3200, () => { setAgent('planner', 'done'); setProgress(18); });
+    async function start() {
+      try {
+        // 1. POST to start generation
+        addLog('system', 'info', `Connecting to backend...`);
+        const res = await fetch(`${BACKEND_URL}/course/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic, difficulty }),
+        });
 
-    // ─── Stage 2: Lesson Creator ────────────────────────────────
-    t(3400, () => { setAgent('creator', 'active'); });
-    t(3800, () => addLog('creator', 'info', 'Writing Lesson 1: Introduction to React Hooks...'));
-    t(4800, () => addLog('creator', 'success', '✓ Lesson 1 written — narration + 1 code example queued'));
-    t(5200, () => addLog('creator', 'info', 'Writing Lesson 2: useEffect and Side Effects...'));
-    t(6200, () => addLog('creator', 'success', '✓ Lesson 2 written — narration + 2 code examples queued'));
-    t(6600, () => addLog('creator', 'info', 'Writing Lessons 3–6...'));
-    t(7600, () => addLog('creator', 'success', '✓ All 6 lessons written — 7 code examples ready for validation'));
-    t(8200, () => { setAgent('creator', 'done'); setProgress(40); });
+        if (!res.ok) throw new Error(`Backend returned ${res.status}`);
+        const { courseId: id } = await res.json();
+        if (aborted) return;
 
-    // ─── Stage 3: Code Validator (first pass) ───────────────────
-    t(8400, () => { setAgent('validator', 'active'); });
-    t(8800, () => addLog('validator', 'info', 'Running 7 code examples in isolated sandbox...'));
-    t(9800, () => addLog('validator', 'success', '✓ Example 1 (useState Counter) — PASSED'));
-    t(10600, () => { setProgress(52); addLog('validator', 'error', '✗ Example 2 (useEffect + deps) — FAILED: missing dependency array'); });
-    t(11000, () => { setAgent('validator', 'failed'); setAgent('fixer', 'active'); setFeedbackLoops(l => l + 1); });
+        setCourseId(id);
+        localStorage.setItem('lastCourseId', id);
+        localStorage.setItem('lastCourseTopic', topic);
+        localStorage.setItem('lastCourseStart', Date.now().toString());
 
-    // ─── Stage 4: Code Fixer (loop 1) ───────────────────────────
-    t(11400, () => addLog('fixer', 'fix', 'Analyzing failure: useEffect dependency array is empty []'));
-    t(12200, () => addLog('fixer', 'fix', 'Rewriting: added [count] to dependency array, switched to functional updater'));
-    t(13000, () => addLog('fixer', 'success', '✓ Code rewritten — sending back to validator'));
-    t(13400, () => { setAgent('fixer', 'done'); setAgent('validator', 'active'); setProgress(58); });
+        addLog('system', 'success', `Generation started — ID: ${id.slice(0, 8)}...`);
 
-    // ─── Stage 5: Validator re-check ────────────────────────────
-    t(13800, () => addLog('validator', 'info', 'Re-testing Example 2 (attempt 2)...'));
-    t(14600, () => addLog('validator', 'success', '✓ Example 2 — PASSED (attempt 2)'));
-    t(15200, () => addLog('validator', 'success', '✓ Example 3 (fetch with useEffect) — PASSED'));
-    t(16000, () => addLog('validator', 'success', '✓ Example 4 (useRef focus) — PASSED'));
-    t(16800, () => addLog('validator', 'success', '✓ Example 5 (useContext theme) — PASSED'));
-    t(17400, () => { setProgress(72); addLog('validator', 'error', '✗ Example 6 (useLocalStorage) — FAILED: localStorage access throws in SSR'); });
-    t(17800, () => { setAgent('validator', 'failed'); setAgent('fixer', 'active'); setFeedbackLoops(l => l + 1); });
+        // 2. Subscribe to SSE stream
+        es = new EventSource(`${BACKEND_URL}/course/${id}/stream`);
 
-    // ─── Stage 6: Code Fixer (loop 2) ───────────────────────────
-    t(18200, () => addLog('fixer', 'fix', 'Analyzing failure: localStorage throws in restricted environments'));
-    t(19000, () => addLog('fixer', 'fix', 'Rewriting: wrapped localStorage calls in try/catch, added missing dep "key"'));
-    t(19800, () => addLog('fixer', 'success', '✓ Code rewritten — sending back to validator'));
-    t(20200, () => { setAgent('fixer', 'done'); setAgent('validator', 'active'); setProgress(80); });
+        es.onmessage = (e) => {
+          if (aborted) return;
+          try {
+            const event = JSON.parse(e.data);
+            handleEvent(event, id);
+          } catch {
+            // ignore parse errors
+          }
+        };
 
-    // ─── Stage 7: Final validation ──────────────────────────────
-    t(20600, () => addLog('validator', 'info', 'Re-testing Example 6 (attempt 2)...'));
-    t(21400, () => addLog('validator', 'success', '✓ Example 6 — PASSED (attempt 2)'));
-    t(22000, () => addLog('validator', 'success', '✓ Example 7 (useReducer cart) — PASSED'));
-    t(22800, () => addLog('validator', 'success', 'All 7 code examples validated. 5 passed first try, 2 required fixes.'));
-    t(23200, () => { setAgent('validator', 'done'); setProgress(100); });
-    t(23800, () => setDone(true));
+        es.onerror = () => {
+          if (!aborted && !done) {
+            addLog('system', 'error', 'Stream connection lost');
+            es?.close();
+          }
+        };
+      } catch (err: any) {
+        if (!aborted) {
+          setError(err.message || 'Failed to connect to backend');
+          addLog('system', 'error', `Error: ${err.message}`);
+        }
+      }
+    }
 
-    return () => timers.forEach(clearTimeout);
-  }, [topic]);
+    function handleEvent(event: any, id: string) {
+      const { agent, status, data } = event;
 
-  const logTypeStyle: Record<LogType, string> = {
+      if (agent === 'planner') {
+        if (status === 'running') {
+          setAgent('planner', 'active');
+          bumpProgress(5);
+          addLog('planner', 'info', data.message || `Analyzing topic: "${topic}"...`);
+        } else if (status === 'done') {
+          setAgent('planner', 'done');
+          bumpProgress(18);
+          addLog('planner', 'success', `Planned ${data.lessons} lessons`);
+        }
+      } else if (agent === 'creator') {
+        if (status === 'running') {
+          setAgent('creator', 'active');
+          addLog('creator', 'info', `Writing Lesson ${(data.lesson ?? 0) + 1}${data.title ? `: ${data.title}` : ''}...`);
+        } else if (status === 'done') {
+          setAgent('creator', 'done');
+          bumpProgress(Math.min(progressRef.current + 8, 45));
+          addLog('creator', 'success', `Lesson ${(data.lesson ?? 0) + 1} written`);
+        }
+      } else if (agent === 'validator') {
+        if (status === 'running') {
+          setAgent('validator', 'active');
+          addLog('validator', 'info', `Validating code examples in lesson ${(data.lesson ?? 0) + 1}...`);
+        } else if (status === 'done') {
+          const vs: string = data.status || 'pass';
+          if (vs === 'fail') {
+            setAgent('validator', 'failed');
+            addLog('validator', 'error', `✗ Lesson ${(data.lesson ?? 0) + 1} — FAILED`);
+          } else if (vs === 'fixed') {
+            setAgent('validator', 'done');
+            addLog('validator', 'fix', `↻ Lesson ${(data.lesson ?? 0) + 1} — FIXED`);
+          } else {
+            setAgent('validator', 'done');
+            addLog('validator', 'success', `✓ Lesson ${(data.lesson ?? 0) + 1} — PASSED`);
+          }
+          bumpProgress(Math.min(progressRef.current + 8, 90));
+        }
+      } else if (agent === 'fixer') {
+        if (status === 'running') {
+          setAgent('fixer', 'active');
+          setFeedbackLoops(l => l + 1);
+          addLog('fixer', 'fix', `↻ Fixing ${data.failures || 1} failure(s) in lesson ${(data.lesson ?? 0) + 1}...`);
+        } else if (status === 'done') {
+          setAgent('fixer', 'done');
+          addLog('fixer', 'success', `✓ Fixed ${data.fixed || data.failures || 1} example(s) — re-validating`);
+        }
+      } else if (agent === 'orchestrator') {
+        if (status === 'complete') {
+          bumpProgress(100);
+          setDone(true);
+          const elapsed = data.elapsedSeconds ? ` in ${data.elapsedSeconds}s` : '';
+          addLog('validator', 'success',
+            `✓ Course complete — ${data.totalLessons} lessons, ${data.totalChecks || '?'} code checks, ${data.fixes || 0} fixes${elapsed}`
+          );
+          // Store stats for MonitorPage
+          localStorage.setItem('lastCourseStats', JSON.stringify({
+            totalLessons: data.totalLessons,
+            totalChecks: data.totalChecks || 0,
+            fixes: data.fixes || 0,
+            elapsedSeconds: data.elapsedSeconds || 0,
+          }));
+          es?.close();
+        } else if (status === 'error') {
+          setError(data.message);
+          addLog('planner', 'error', `Error: ${data.message}`);
+          es?.close();
+        }
+      }
+    }
+
+    start();
+
+    return () => {
+      aborted = true;
+      es?.close();
+    };
+  }, [topic, difficulty]);
+
+  const logTypeStyle: Record<LogType | 'system', string> = {
     success: 'log-success',
     error: 'log-error',
     fix: 'log-fix',
     info: 'log-info',
+    system: 'log-info',
   };
 
-  const logPrefix: Record<LogType, string> = {
+  const logPrefix: Record<LogType | 'system', string> = {
     success: '✓',
     error: '✗',
     fix: '↻',
     info: '·',
+    system: '·',
   };
 
   return (
@@ -192,9 +278,9 @@ export default function GeneratePage() {
               Topic: <span className="text-foreground font-medium">"{topic}"</span>
             </p>
           </div>
-          {done && (
+          {done && courseId && (
             <button
-              onClick={() => navigate('/course')}
+              onClick={() => navigate(`/course?id=${courseId}`)}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all glow-primary animate-fade-up"
             >
               View Course
@@ -212,7 +298,7 @@ export default function GeneratePage() {
         </div>
         <div className="flex items-center justify-between mt-1">
           <span className="text-[10px] text-muted-foreground">
-            {done ? 'Complete' : 'Processing...'}
+            {error ? 'Error' : done ? 'Complete' : 'Processing...'}
           </span>
           <span className="text-[10px] text-muted-foreground font-mono">{progress}%</span>
         </div>
@@ -247,7 +333,6 @@ export default function GeneratePage() {
                 {i < agentConfig.length - 1 && (
                   <div className="flex flex-col items-center px-1.5 shrink-0">
                     <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
-                    {/* Show feedback arrow between validator and fixer */}
                     {i === 2 && feedbackLoops > 0 && (
                       <div className="flex items-center gap-0.5 mt-1">
                         <RefreshCw className="w-3 h-3 text-amber-400" />
@@ -270,6 +355,13 @@ export default function GeneratePage() {
             </p>
           </div>
         )}
+
+        {error && (
+          <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-400/5 border border-red-400/15">
+            <X className="w-3 h-3 text-red-400 shrink-0" />
+            <p className="text-[11px] text-red-400">{error}</p>
+          </div>
+        )}
       </div>
 
       {/* Live log */}
@@ -278,14 +370,17 @@ export default function GeneratePage() {
           Live activity log
         </p>
         <div className="space-y-1.5 font-mono text-xs">
-          {logs.map(log => (
-            <div key={log.id} className={`flex items-start gap-2 animate-fade-up ${logTypeStyle[log.type]}`}>
-              <span className="shrink-0 w-3 text-center mt-px">{logPrefix[log.type]}</span>
-              <span className="text-muted-foreground shrink-0">[{log.agent}]</span>
-              <span>{log.text}</span>
-            </div>
-          ))}
-          {!done && logs.length > 0 && (
+          {logs.map(log => {
+            const type = (log.type as string) in logTypeStyle ? log.type as LogType : 'info';
+            return (
+              <div key={log.id} className={`flex items-start gap-2 animate-fade-up ${logTypeStyle[type]}`}>
+                <span className="shrink-0 w-3 text-center mt-px">{logPrefix[type]}</span>
+                <span className="text-muted-foreground shrink-0">[{log.agent}]</span>
+                <span>{log.text}</span>
+              </div>
+            );
+          })}
+          {!done && !error && logs.length > 0 && (
             <div className="flex items-center gap-1.5 text-muted-foreground animate-pulse">
               <span className="w-3 text-center">·</span>
               <span>processing</span>
@@ -299,7 +394,7 @@ export default function GeneratePage() {
           {done && (
             <div className="mt-4 p-3 rounded-lg bg-green-400/5 border border-green-400/20 animate-fade-up">
               <p className="text-green-400 font-medium text-xs">
-                ✓ Course generation complete — 6 lessons, 7 validated examples, {feedbackLoops} code fixes applied
+                ✓ Course generation complete — {feedbackLoops} code fix{feedbackLoops !== 1 ? 'es' : ''} applied
               </p>
             </div>
           )}

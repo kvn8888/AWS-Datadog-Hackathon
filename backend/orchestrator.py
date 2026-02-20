@@ -6,6 +6,7 @@ Runs as a background task (asyncio.create_task) so the API returns immediately.
 
 import asyncio
 import json
+import time
 import uuid
 from functools import partial
 
@@ -38,18 +39,31 @@ async def _run_agent(agent, prompt: str) -> str:
 
 async def generate_course(topic: str, difficulty: str, queue: asyncio.Queue, course_id: str) -> None:
     """Run the full 4-agent pipeline for a course."""
+    course_start = time.time()
+    total_checks = 0
+    total_failures = 0
+    total_fixes = 0
+
     try:
         # ---------------------------------------------------------------
         # 1. PLANNER
         # ---------------------------------------------------------------
         await emit_event(queue, "planner", "running", {"message": f"Planning curriculum for: {topic}"})
 
+        t0 = time.time()
         planner = create_planner_agent()
         planner_prompt = f"Create a {difficulty}-level micro-course curriculum for: {topic}"
         raw_plan = await _run_agent(planner, planner_prompt)
         lesson_plans = parse_planner_output(raw_plan)
+        planner_elapsed = time.time() - t0
 
         await emit_event(queue, "planner", "done", {"lessons": len(lesson_plans)})
+
+        try:
+            from observability import track_agent_call
+            track_agent_call("planner", planner_elapsed, True)
+        except Exception:
+            pass
 
         # ---------------------------------------------------------------
         # 2-4. PER-LESSON: Creator → Validator → Fixer
@@ -64,33 +78,55 @@ async def generate_course(topic: str, difficulty: str, queue: asyncio.Queue, cou
             # --- CREATOR ---
             await emit_event(queue, "creator", "running", {"lesson": i, "title": plan.get("title", f"Lesson {i+1}")})
 
+            t0 = time.time()
             creator_prompt = (
                 f"Create lesson content for lesson {i+1} of a {difficulty}-level course on '{topic}'.\n"
                 f"Lesson plan:\n{json.dumps(plan, indent=2)}"
             )
             raw_lesson = await _run_agent(creator, creator_prompt)
             lesson_data = parse_creator_output(raw_lesson)
+            creator_elapsed = time.time() - t0
 
             await emit_event(queue, "creator", "done", {"lesson": i})
+
+            try:
+                from observability import track_agent_call
+                track_agent_call("creator", creator_elapsed, True)
+            except Exception:
+                pass
 
             # --- VALIDATOR ---
             await emit_event(queue, "validator", "running", {"lesson": i})
 
             code_examples = lesson_data.get("code_examples", [])
+            lesson_checks = len(code_examples)
+            total_checks += lesson_checks
+
+            t0 = time.time()
             validator_prompt = (
                 f"Validate all code examples in this lesson:\n"
                 f"{json.dumps(code_examples, indent=2)}"
             )
             raw_validation = await _run_agent(validator, validator_prompt)
             validation = parse_validator_output(raw_validation)
+            validator_elapsed = time.time() - t0
 
             results = validation.get("results", [])
             failures = [r for r in results if not r.get("passed", True)]
+            lesson_failures = len(failures)
+            total_failures += lesson_failures
+
+            try:
+                from observability import track_agent_call
+                track_agent_call("validator", validator_elapsed, True)
+            except Exception:
+                pass
 
             # --- FIXER (if needed) ---
             if failures:
                 await emit_event(queue, "fixer", "running", {"lesson": i, "failures": len(failures)})
 
+                t0 = time.time()
                 for fail in failures:
                     idx = fail.get("index", 0)
                     if idx < len(code_examples):
@@ -114,18 +150,25 @@ async def generate_course(topic: str, difficulty: str, queue: asyncio.Queue, cou
                             "original_code": original_code,
                             "validation_status": "fixed" if fix_result.get("passed") else "fail",
                         }
+                        total_fixes += 1
 
+                fixer_elapsed = time.time() - t0
                 await emit_event(queue, "fixer", "done", {"lesson": i, "fixed": len(failures)})
+
+                try:
+                    from observability import track_agent_call
+                    track_agent_call("fixer", fixer_elapsed, True)
+                except Exception:
+                    pass
 
             # Set validation status on remaining code examples
             for j, ex in enumerate(code_examples):
                 if "validation_status" not in ex or ex["validation_status"] == "pending":
-                    # Check if this snippet passed
                     matching = [r for r in results if r.get("index") == j]
                     if matching and matching[0].get("passed"):
                         ex["validation_status"] = "pass"
                     elif not matching:
-                        ex["validation_status"] = "pass"  # Not tested = assume pass
+                        ex["validation_status"] = "pass"
 
             # Determine overall lesson validation status
             statuses = [ex.get("validation_status", "pending") for ex in code_examples]
@@ -163,9 +206,22 @@ async def generate_course(topic: str, difficulty: str, queue: asyncio.Queue, cou
         )
         _courses[course_id] = course
 
+        course_elapsed = time.time() - course_start
+
+        # Datadog metrics
+        try:
+            from observability import track_course_generated, track_validation
+            track_course_generated(topic, course_elapsed, len(lessons))
+            track_validation(total_checks, total_failures, total_fixes)
+        except Exception:
+            pass
+
         await emit_event(queue, "orchestrator", "complete", {
             "courseId": course_id,
             "totalLessons": len(lessons),
+            "totalChecks": total_checks,
+            "fixes": total_fixes,
+            "elapsedSeconds": round(course_elapsed, 1),
         })
 
     except Exception as exc:
@@ -193,6 +249,7 @@ async def regenerate_lesson(
 
         await emit_event(queue, "creator", "running", {"lesson": lesson_index, "title": old_lesson.title})
 
+        t0 = time.time()
         creator_prompt = (
             f"Regenerate this lesson with the following instruction: {instruction}\n"
             f"Original lesson title: {old_lesson.title}\n"
@@ -204,9 +261,16 @@ async def regenerate_lesson(
 
         await emit_event(queue, "creator", "done", {"lesson": lesson_index})
 
+        try:
+            from observability import track_agent_call
+            track_agent_call("creator", time.time() - t0, True)
+        except Exception:
+            pass
+
         # Validate
         await emit_event(queue, "validator", "running", {"lesson": lesson_index})
         code_examples = lesson_data.get("code_examples", [])
+        t0 = time.time()
         raw_validation = await _run_agent(
             validator,
             f"Validate all code examples:\n{json.dumps(code_examples, indent=2)}"
@@ -214,8 +278,15 @@ async def regenerate_lesson(
         validation = parse_validator_output(raw_validation)
         failures = [r for r in validation.get("results", []) if not r.get("passed", True)]
 
+        try:
+            from observability import track_agent_call
+            track_agent_call("validator", time.time() - t0, True)
+        except Exception:
+            pass
+
         if failures:
             await emit_event(queue, "fixer", "running", {"lesson": lesson_index, "failures": len(failures)})
+            t0 = time.time()
             for fail in failures:
                 idx = fail.get("index", 0)
                 if idx < len(code_examples):
@@ -232,6 +303,12 @@ async def regenerate_lesson(
                         "validation_status": "fixed" if fix_result.get("passed") else "fail",
                     }
             await emit_event(queue, "fixer", "done", {"lesson": lesson_index})
+
+            try:
+                from observability import track_agent_call
+                track_agent_call("fixer", time.time() - t0, True)
+            except Exception:
+                pass
 
         # Set pass status on un-updated examples
         for ex in code_examples:

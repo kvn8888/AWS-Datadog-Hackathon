@@ -1,6 +1,36 @@
 import { useState, useRef, useEffect } from 'react';
-import { Check, CheckCircle, ChevronLeft, ChevronRight, Play, Send, Wrench } from 'lucide-react';
-import { mockCourse, initialChatMessages, type ChatMessage } from '@/data/mockData';
+import { Check, CheckCircle, ChevronLeft, ChevronRight, Play, Send, Wrench, AlertCircle, Volume2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { initialChatMessages, type ChatMessage } from '@/data/mockData';
+
+const BACKEND_URL = 'http://localhost:8000';
+
+// Backend schema types
+interface BackendCodeExample {
+  language: string;
+  code: string;
+  original_code?: string | null;
+  validation_status: 'pass' | 'fixed' | 'fail' | 'pending';
+}
+
+interface BackendLesson {
+  title: string;
+  objectives: string[];
+  explanation: string;
+  code_examples: BackendCodeExample[];
+  quiz_questions: { question: string; options: string[]; correct_index: number }[];
+  audio_url: string | null;
+  image_url: string | null;
+  validation_status: 'pass' | 'fixed' | 'fail' | 'pending';
+}
+
+interface BackendCourse {
+  id: string;
+  topic: string;
+  difficulty: string;
+  lessons: BackendLesson[];
+  status: string;
+}
 
 const suggestedEdits = [
   'Make this lesson more beginner-friendly',
@@ -9,7 +39,63 @@ const suggestedEdits = [
   'Add a quiz question',
 ];
 
-function VideoPlayer({ title }: { title: string }) {
+function AudioPlayer({ audioUrl, title }: { audioUrl: string; title: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  function togglePlay() {
+    if (!audioRef.current) return;
+    if (playing) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setPlaying(!playing);
+  }
+
+  return (
+    <div className="rounded-lg overflow-hidden border border-border bg-[#0a0a14]">
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        onTimeUpdate={() => {
+          if (audioRef.current) {
+            setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100 || 0);
+          }
+        }}
+        onEnded={() => setPlaying(false)}
+      />
+      <div className="px-4 py-3 flex items-center gap-3">
+        <Volume2 className="w-4 h-4 text-primary shrink-0" />
+        <button onClick={togglePlay} className="text-foreground hover:text-primary transition-colors shrink-0">
+          {playing ? (
+            <div className="flex gap-0.5">
+              <div className="w-0.5 h-3 bg-current rounded-sm" />
+              <div className="w-0.5 h-3 bg-current rounded-sm" />
+            </div>
+          ) : (
+            <Play className="w-3.5 h-3.5 fill-current" />
+          )}
+        </button>
+        <div
+          className="flex-1 h-1 bg-muted rounded-full cursor-pointer"
+          onClick={e => {
+            if (!audioRef.current) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = ((e.clientX - rect.left) / rect.width);
+            audioRef.current.currentTime = pct * audioRef.current.duration;
+          }}
+        >
+          <div className="h-full bg-primary rounded-full" style={{ width: `${progress}%` }} />
+        </div>
+        <span className="text-[10px] text-muted-foreground font-mono shrink-0">{title}</span>
+      </div>
+    </div>
+  );
+}
+
+function FakeAudioPlayer({ title }: { title: string }) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -41,46 +127,35 @@ function VideoPlayer({ title }: { title: string }) {
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
 
-  const elapsed = Math.floor((progress / 100) * 330);
-  const total = '5:30';
+  const elapsed = Math.floor((progress / 100) * 180);
   const elapsedStr = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
 
   return (
     <div className="rounded-lg overflow-hidden border border-border bg-[#0a0a14]">
-      {/* Video area */}
-      <div
-        className="relative aspect-video flex items-center justify-center cursor-pointer group"
+      <div className="relative aspect-video flex items-center justify-center cursor-pointer group"
         style={{ background: 'linear-gradient(135deg, #0f0f1e 0%, #14142a 50%, #0a0a14 100%)' }}
         onClick={togglePlay}
       >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-muted-foreground text-xs font-mono mb-2 opacity-60">{title}</p>
-            <div className="w-14 h-14 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-all">
-              {playing ? (
-                <div className="flex gap-1">
-                  <div className="w-1 h-5 bg-primary rounded-sm" />
-                  <div className="w-1 h-5 bg-primary rounded-sm" />
-                </div>
-              ) : (
-                <Play className="w-6 h-6 text-primary ml-1" />
-              )}
-            </div>
+        <div className="text-center">
+          <p className="text-muted-foreground text-xs font-mono mb-2 opacity-60">{title}</p>
+          <div className="w-14 h-14 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center group-hover:bg-primary/20 transition-all">
+            {playing ? (
+              <div className="flex gap-1">
+                <div className="w-1 h-5 bg-primary rounded-sm" />
+                <div className="w-1 h-5 bg-primary rounded-sm" />
+              </div>
+            ) : (
+              <Play className="w-6 h-6 text-primary ml-1" />
+            )}
           </div>
         </div>
-        {/* Simulated waveform */}
         <div className="absolute bottom-4 left-6 right-6 flex items-end gap-0.5 h-6 opacity-20">
           {Array.from({ length: 60 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex-1 bg-primary rounded-sm"
-              style={{ height: `${20 + Math.sin(i * 0.4) * 15 + Math.random() * 20}%` }}
-            />
+            <div key={i} className="flex-1 bg-primary rounded-sm"
+              style={{ height: `${20 + Math.sin(i * 0.4) * 15 + Math.random() * 20}%` }} />
           ))}
         </div>
       </div>
-
-      {/* Controls */}
       <div className="px-4 py-2.5 bg-card border-t border-border flex items-center gap-3">
         <button onClick={togglePlay} className="text-foreground hover:text-primary transition-colors">
           {playing ? (
@@ -93,81 +168,122 @@ function VideoPlayer({ title }: { title: string }) {
           )}
         </button>
         <span className="text-[10px] font-mono text-muted-foreground w-8">{elapsedStr}</span>
-        <div
-          className="flex-1 h-1 bg-muted rounded-full cursor-pointer"
+        <div className="flex-1 h-1 bg-muted rounded-full cursor-pointer"
           onClick={e => {
             const rect = e.currentTarget.getBoundingClientRect();
-            const pct = ((e.clientX - rect.left) / rect.width) * 100;
-            setProgress(Math.max(0, Math.min(100, pct)));
+            setProgress(Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)));
           }}
         >
           <div className="h-full bg-primary rounded-full" style={{ width: `${progress}%` }} />
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{total}</span>
+        <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">3:00</span>
       </div>
     </div>
   );
 }
 
-function CodeBlock({ example }: { example: typeof mockCourse.lessons[0]['codeExamples'][0] }) {
+function ValidationBadge({ status }: { status: string }) {
+  if (status === 'pass') {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-medium text-green-400">
+        <CheckCircle className="w-3 h-3" /> PASS
+      </span>
+    );
+  }
+  if (status === 'fixed') {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-medium text-amber-400">
+        <Wrench className="w-3 h-3" /> FIXED
+      </span>
+    );
+  }
   return (
-    <div className={`rounded-lg overflow-hidden border ${example.validated ? 'border-validated/25' : 'border-failed/25'}`}>
-      {/* Header */}
+    <span className="flex items-center gap-1 text-[10px] font-medium text-red-400">
+      <AlertCircle className="w-3 h-3" /> FAIL
+    </span>
+  );
+}
+
+function CodeBlock({ example }: { example: BackendCodeExample }) {
+  const borderColor = example.validation_status === 'pass'
+    ? 'border-green-500/25'
+    : example.validation_status === 'fixed'
+    ? 'border-amber-500/25'
+    : 'border-red-500/25';
+
+  return (
+    <div className={`rounded-lg overflow-hidden border ${borderColor}`}>
       <div className="flex items-center justify-between px-4 py-2 bg-card border-b border-border">
-        <span className="text-xs text-muted-foreground font-mono">{example.title}</span>
+        <span className="text-xs text-muted-foreground font-mono">{example.language}</span>
         <div className="flex items-center gap-3">
-          {example.attempts > 1 && (
+          {example.validation_status === 'fixed' && example.original_code && (
             <span className="flex items-center gap-1 text-[10px] text-amber-400">
-              <Wrench className="w-3 h-3" />
-              Fixed in {example.attempts} attempts
+              <Wrench className="w-3 h-3" /> Auto-fixed
             </span>
           )}
-          <span
-            className={`flex items-center gap-1 text-[10px] font-medium ${
-              example.validated ? 'text-validated' : 'text-failed'
-            }`}
-          >
-            <CheckCircle className="w-3 h-3" />
-            Validated
-          </span>
+          <ValidationBadge status={example.validation_status} />
         </div>
       </div>
 
-      {/* Code */}
+      {/* Show original code if fixed */}
+      {example.validation_status === 'fixed' && example.original_code && (
+        <div className="p-4 bg-red-950/20 border-b border-border">
+          <p className="text-[10px] text-red-400 font-mono uppercase tracking-wide mb-2">Original (failed)</p>
+          <pre className="font-mono text-xs text-red-300/70 leading-relaxed whitespace-pre overflow-x-auto">
+            {example.original_code}
+          </pre>
+        </div>
+      )}
+
       <div className="p-4 bg-[#0a0a14] overflow-x-auto">
         <pre className="font-mono text-xs text-foreground/90 leading-relaxed whitespace-pre">
           {example.code}
         </pre>
       </div>
 
-      {/* Output */}
-      <div className="px-4 py-3 bg-card border-t border-border">
-        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1.5 font-mono">
-          Validation output
+      <div className="px-4 py-2 bg-card border-t border-border">
+        <p className="text-[10px] text-muted-foreground font-mono">
+          {example.validation_status === 'pass' && '✓ All tests passed'}
+          {example.validation_status === 'fixed' && '↻ Fixed and re-validated — now passing'}
+          {example.validation_status === 'fail' && '✗ Validation failed'}
+          {example.validation_status === 'pending' && '· Pending validation'}
         </p>
-        <pre className="font-mono text-[11px] text-validated leading-relaxed whitespace-pre">
-          {example.output}
-        </pre>
-        {example.fixDescription && (
-          <p className="mt-2 text-[10px] text-amber-400 flex items-start gap-1">
-            <Wrench className="w-3 h-3 shrink-0 mt-px" />
-            Fix applied: {example.fixDescription}
-          </p>
-        )}
       </div>
     </div>
   );
 }
 
 export default function CoursePage() {
-  const { lessons, topic } = mockCourse;
+  const [searchParams] = useSearchParams();
+  const courseIdFromUrl = searchParams.get('id') || localStorage.getItem('lastCourseId');
+
+  const [course, setCourse] = useState<BackendCourse | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(0);
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>(initialChatMessages);
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const lesson = lessons[activeLesson];
+  useEffect(() => {
+    if (!courseIdFromUrl) {
+      setLoading(false);
+      return;
+    }
+    fetch(`${BACKEND_URL}/course/${courseIdFromUrl}`)
+      .then(r => r.json())
+      .then(data => {
+        setCourse(data);
+        setMessages([{
+          role: 'ai',
+          content: `Your course on "${data.topic}" is ready — ${data.lessons.length} lessons, all code validated. Ask me to adjust any lesson.`,
+        }]);
+      })
+      .catch(() => {
+        // Fall through to show loading error
+      })
+      .finally(() => setLoading(false));
+  }, [courseIdFromUrl]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -175,68 +291,107 @@ export default function CoursePage() {
 
   function sendMessage(text?: string) {
     const content = (text ?? chatInput).trim();
-    if (!content) return;
+    if (!content || !course) return;
     setChatInput('');
     setMessages(prev => [...prev, { role: 'user', content }]);
     setIsTyping(true);
 
-    setTimeout(() => {
-      setIsTyping(false);
-      const replies: Record<string, string> = {
-        beginner: `I've simplified Lesson ${activeLesson + 1} — shorter code blocks, more inline comments, and a plain-English explanation before each example.`,
-        example: `Added a new code example to Lesson ${activeLesson + 1}. The Code Validator ran it and it passed on the first attempt.`,
-        simpler: `Rewrote the narration for Lesson ${activeLesson + 1} using simpler language and everyday analogies.`,
-        quiz: `Added a quiz question at the end of Lesson ${activeLesson + 1}: "What happens if you omit the dependency array from useEffect?"`,
-      };
-      const key = Object.keys(replies).find(k => content.toLowerCase().includes(k));
-      const reply = key
-        ? replies[key]
-        : `I've noted your request: "${content}". The Lesson Creator will update the course — the Code Validator will re-run any affected examples automatically.`;
-      setMessages(prev => [...prev, { role: 'ai', content: reply }]);
-    }, 1400);
+    // Call real regenerate endpoint
+    fetch(`${BACKEND_URL}/course/${course.id}/lesson/${activeLesson}/regenerate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction: content }),
+    })
+      .then(r => r.json())
+      .then(() => {
+        setIsTyping(false);
+        setMessages(prev => [...prev, {
+          role: 'ai',
+          content: `Regenerating Lesson ${activeLesson + 1} with your instruction. The Code Validator will re-run automatically. Refresh the lesson in a moment to see updates.`,
+        }]);
+      })
+      .catch(() => {
+        setIsTyping(false);
+        setMessages(prev => [...prev, {
+          role: 'ai',
+          content: `I've noted your request for Lesson ${activeLesson + 1}: "${content}". Regeneration requires the real pipeline to be running.`,
+        }]);
+      });
   }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Loading course...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!course) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center max-w-sm">
+          <AlertCircle className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm text-foreground font-medium mb-1">No course found</p>
+          <p className="text-xs text-muted-foreground">Generate a course first from the home page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const lessons = course.lessons;
+  const lesson = lessons[activeLesson];
 
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left sidebar — lesson list */}
       <div className="w-56 shrink-0 border-r border-border flex flex-col bg-card">
         <div className="px-4 py-3 border-b border-border">
-          <p className="text-xs font-semibold text-foreground truncate">{topic}</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">{lessons.length} lessons · 42 min</p>
+          <p className="text-xs font-semibold text-foreground truncate">{course.topic}</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{lessons.length} lessons · {course.difficulty}</p>
         </div>
         <div className="flex-1 overflow-y-auto py-2">
           {lessons.map((l, i) => (
             <button
-              key={l.id}
+              key={i}
               onClick={() => setActiveLesson(i)}
               className={`w-full text-left px-4 py-2.5 flex items-start gap-2.5 transition-colors ${
                 i === activeLesson ? 'bg-primary/10 border-r-2 border-primary' : 'hover:bg-muted'
               }`}
             >
-              <div
-                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                  i < activeLesson
-                    ? 'bg-green-500/10 border-green-500/40'
-                    : i === activeLesson
-                    ? 'bg-primary/15 border-primary/40'
-                    : 'bg-muted border-border'
-                }`}
-              >
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                i < activeLesson
+                  ? 'bg-green-500/10 border-green-500/40'
+                  : i === activeLesson
+                  ? 'bg-primary/15 border-primary/40'
+                  : 'bg-muted border-border'
+              }`}>
                 {i < activeLesson ? (
                   <Check className="w-2.5 h-2.5 text-green-400" />
                 ) : (
                   <span className="text-[8px] text-muted-foreground font-mono">{i + 1}</span>
                 )}
               </div>
-              <div className="min-w-0">
-                <p
-                  className={`text-xs leading-tight font-medium truncate ${
-                    i === activeLesson ? 'text-foreground' : 'text-muted-foreground'
-                  }`}
-                >
+              <div className="min-w-0 flex-1">
+                <p className={`text-xs leading-tight font-medium truncate ${
+                  i === activeLesson ? 'text-foreground' : 'text-muted-foreground'
+                }`}>
                   {l.title}
                 </p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{l.duration}</p>
+                <div className="mt-0.5">
+                  {l.validation_status === 'pass' && (
+                    <span className="text-[9px] text-green-400 font-mono">PASS</span>
+                  )}
+                  {l.validation_status === 'fixed' && (
+                    <span className="text-[9px] text-amber-400 font-mono">FIXED</span>
+                  )}
+                  {l.validation_status === 'fail' && (
+                    <span className="text-[9px] text-red-400 font-mono">FAIL</span>
+                  )}
+                </div>
               </div>
             </button>
           ))}
@@ -249,37 +404,93 @@ export default function CoursePage() {
           {/* Lesson header */}
           <div className="mb-4">
             <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest mb-1">
-              Lesson {lesson.id} of {lessons.length}
+              Lesson {activeLesson + 1} of {lessons.length}
             </p>
             <h2 className="text-xl font-bold text-foreground">{lesson.title}</h2>
+            {lesson.objectives.length > 0 && (
+              <ul className="mt-2 space-y-0.5">
+                {lesson.objectives.map((obj, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Check className="w-3 h-3 text-green-400 shrink-0 mt-0.5" />
+                    {obj}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          {/* Video player */}
+          {/* Audio player (real if available, simulated if not) */}
           <div className="mb-6">
-            <VideoPlayer title={lesson.title} />
+            {lesson.audio_url ? (
+              <AudioPlayer audioUrl={lesson.audio_url} title={lesson.title} />
+            ) : (
+              <FakeAudioPlayer title={lesson.title} />
+            )}
           </div>
 
-          {/* Narration */}
-          <div className="mb-6 space-y-3">
-            {lesson.narration.map((para, i) => (
-              <p key={i} className="text-sm text-foreground/85 leading-relaxed">
+          {/* Concept image */}
+          {lesson.image_url && (
+            <div className="mb-6 rounded-lg overflow-hidden border border-border">
+              <img
+                src={lesson.image_url}
+                alt={`Concept diagram for ${lesson.title}`}
+                className="w-full object-cover"
+              />
+              <p className="px-4 py-2 text-[10px] text-muted-foreground bg-card border-t border-border">
+                MiniMax concept visual
+              </p>
+            </div>
+          )}
+
+          {/* Explanation */}
+          <div className="mb-6">
+            {lesson.explanation.split('\n').filter(Boolean).map((para, i) => (
+              <p key={i} className="text-sm text-foreground/85 leading-relaxed mb-3">
                 {para}
               </p>
             ))}
           </div>
 
           {/* Code examples */}
-          <div className="space-y-4 mb-8">
-            <p className="text-xs font-semibold text-foreground">
-              Code Examples
-              <span className="ml-2 text-[10px] text-muted-foreground font-normal">
-                All examples validated before publishing
-              </span>
-            </p>
-            {lesson.codeExamples.map(ex => (
-              <CodeBlock key={ex.id} example={ex} />
-            ))}
-          </div>
+          {lesson.code_examples.length > 0 && (
+            <div className="space-y-4 mb-8">
+              <p className="text-xs font-semibold text-foreground">
+                Code Examples
+                <span className="ml-2 text-[10px] text-muted-foreground font-normal">
+                  All examples validated before publishing
+                </span>
+              </p>
+              {lesson.code_examples.map((ex, i) => (
+                <CodeBlock key={i} example={ex} />
+              ))}
+            </div>
+          )}
+
+          {/* Quiz */}
+          {lesson.quiz_questions.length > 0 && (
+            <div className="mb-8">
+              <p className="text-xs font-semibold text-foreground mb-3">Quiz</p>
+              <div className="space-y-4">
+                {lesson.quiz_questions.map((q, qi) => (
+                  <div key={qi} className="p-4 rounded-lg bg-card border border-border">
+                    <p className="text-sm font-medium text-foreground mb-3">{q.question}</p>
+                    <div className="space-y-2">
+                      {q.options.map((opt, oi) => (
+                        <div key={oi} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
+                          oi === q.correct_index
+                            ? 'bg-green-400/10 border border-green-400/20 text-green-300'
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          <span className="font-mono">{oi === q.correct_index ? '●' : '○'}</span>
+                          {opt}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Navigation */}
           <div className="flex items-center justify-between pt-4 border-t border-border">
@@ -315,17 +526,14 @@ export default function CoursePage() {
           </p>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-primary-foreground rounded-br-sm'
-                    : 'bg-muted text-foreground rounded-bl-sm'
-                }`}
-              >
+              <div className={`max-w-[85%] px-3 py-2 rounded-lg text-xs leading-relaxed ${
+                msg.role === 'user'
+                  ? 'bg-primary text-primary-foreground rounded-br-sm'
+                  : 'bg-muted text-foreground rounded-bl-sm'
+              }`}>
                 {msg.content}
               </div>
             </div>
@@ -342,7 +550,6 @@ export default function CoursePage() {
           <div ref={chatEndRef} />
         </div>
 
-        {/* Suggestions */}
         <div className="px-4 pb-2 flex flex-wrap gap-1">
           {suggestedEdits.map(s => (
             <button
@@ -355,7 +562,6 @@ export default function CoursePage() {
           ))}
         </div>
 
-        {/* Input */}
         <div className="px-4 pb-4 border-t border-border pt-3">
           <div className="flex gap-2">
             <input

@@ -1,7 +1,10 @@
 "use client";
 
-import type { Lesson } from "@/types/course";
+import { useState } from "react";
+import type { Lesson, ValidationStatus } from "@/types/course";
 import ValidationBadge from "./ValidationBadge";
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface Props {
   lesson: Lesson;
@@ -9,6 +12,29 @@ interface Props {
 }
 
 export default function LessonViewer({ lesson, lessonIndex }: Props) {
+  const [testResults, setTestResults] = useState<Record<number, { passed: boolean; error?: string; loading: boolean }>>({});
+
+  const handleTestCode = async (code: string, language: string, index: number) => {
+    setTestResults((prev) => ({ ...prev, [index]: { passed: false, loading: true } }));
+    try {
+      const res = await fetch(`${BACKEND_URL}/course/test-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language }),
+      });
+      const data = await res.json();
+      setTestResults((prev) => ({
+        ...prev,
+        [index]: { passed: data.passed, error: data.error, loading: false },
+      }));
+    } catch {
+      setTestResults((prev) => ({
+        ...prev,
+        [index]: { passed: false, error: "Request failed", loading: false },
+      }));
+    }
+  };
+
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <div className="max-w-3xl">
@@ -59,10 +85,30 @@ export default function LessonViewer({ lesson, lessonIndex }: Props) {
           <div key={i} className="mb-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-mono text-gray-500">{example.language}</span>
-              {example.validation_status && (
+              <div className="flex items-center gap-2">
+                {/* On-demand test button */}
+                <button
+                  onClick={() => handleTestCode(example.code, example.language, i)}
+                  disabled={testResults[i]?.loading}
+                  className="px-3 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 disabled:opacity-50 border border-indigo-200"
+                >
+                  {testResults[i]?.loading ? "Testing..." : "Test This Code"}
+                </button>
+                {/* Test result badge */}
+                {testResults[i] && !testResults[i].loading && (
+                  <ValidationBadge status={testResults[i].passed ? "pass" : "fail"} />
+                )}
+                {/* Original validation badge */}
                 <ValidationBadge status={example.validation_status} />
-              )}
+              </div>
             </div>
+
+            {/* Test error output */}
+            {testResults[i] && !testResults[i].loading && testResults[i].error && (
+              <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 font-mono">
+                {testResults[i].error}
+              </div>
+            )}
 
             {/* Show original code for FIXED examples */}
             {example.original_code && (

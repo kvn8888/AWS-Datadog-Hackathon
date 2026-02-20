@@ -78,32 +78,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PIPE-01 | — | Pending |
-| PIPE-02 | — | Pending |
-| PIPE-03 | — | Pending |
-| PIPE-04 | — | Pending |
-| PIPE-05 | — | Pending |
-| PIPE-06 | — | Pending |
-| CKIT-01 | — | Pending |
-| CKIT-02 | — | Pending |
-| CKIT-03 | — | Pending |
-| CKIT-04 | — | Pending |
-| MMAX-01 | — | Pending |
-| MMAX-02 | — | Pending |
-| MMAX-03 | — | Pending |
-| VIEW-01 | — | Pending |
-| VIEW-02 | — | Pending |
-| VIEW-03 | — | Pending |
-| VIEW-04 | — | Pending |
-| VIEW-05 | — | Pending |
-| OBSV-01 | — | Pending |
-| OBSV-02 | — | Pending |
+| PIPE-01 | Phase 2 | Pending |
+| PIPE-02 | Phase 2 | Pending |
+| PIPE-03 | Phase 2 | Pending |
+| PIPE-04 | Phase 2 | Pending |
+| PIPE-05 | Phase 2 | Pending |
+| PIPE-06 | Phase 3 | Pending |
+| CKIT-01 | Phase 3 | Pending |
+| CKIT-02 | Phase 3 | Pending |
+| CKIT-03 | Phase 3 | Pending |
+| CKIT-04 | Phase 3 | Pending |
+| MMAX-01 | Phase 2 | Pending |
+| MMAX-02 | Phase 2 | Pending |
+| MMAX-03 | Phase 3 | Pending |
+| VIEW-01 | Phase 1 | Pending |
+| VIEW-02 | Phase 1 | Pending |
+| VIEW-03 | Phase 1 | Pending |
+| VIEW-04 | Phase 3 | Pending |
+| VIEW-05 | Phase 5 | Pending |
+| OBSV-01 | Phase 4 | Pending |
+| OBSV-02 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 20 total
-- Mapped to phases: 0
-- Unmapped: 20
+- Mapped to phases: 20
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-20*
-*Last updated: 2026-02-20 after initial definition*
+*Last updated: 2026-02-20 after roadmap creation — all 20 requirements mapped*

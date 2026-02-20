@@ -1,0 +1,20 @@
+# .ralphrc - Ralph project configuration for LearnForge
+PROJECT_NAME="learnforge"
+PROJECT_TYPE="python"
+
+# Loop settings — hackathon mode: fast iterations, generous timeout
+MAX_CALLS_PER_HOUR=100
+CLAUDE_TIMEOUT_MINUTES=30
+CLAUDE_OUTPUT_FORMAT="json"
+
+# Tool permissions — broad access for hackathon speed
+ALLOWED_TOOLS="Write,Read,Edit,Bash(git *),Bash(npm *),Bash(npx *),Bash(pip *),Bash(python *),Bash(uvicorn *),Bash(curl *),Bash(mkdir *),Bash(cd *),Bash(source *),Bash(cat *),Bash(ls *),Bash(node *)"
+
+# Session management
+SESSION_CONTINUITY=true
+SESSION_EXPIRY_HOURS=12
+
+# Circuit breaker — more lenient for complex multi-file builds
+CB_NO_PROGRESS_THRESHOLD=5
+CB_SAME_ERROR_THRESHOLD=7
+CB_COOLDOWN_MINUTES=10

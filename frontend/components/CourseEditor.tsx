@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useCourseStream } from "@/hooks/useCourseStream";
+import { useCopilotActions } from "@/hooks/useCopilotActions";
 import GenerateForm from "./GenerateForm";
 import AgentStatusPanel from "./AgentStatusPanel";
 import CourseOutline from "./CourseOutline";
@@ -10,6 +11,9 @@ import LessonViewer from "./LessonViewer";
 export default function CourseEditor() {
   const { agentStatus, course, setCourse, isGenerating, error, startStream } = useCourseStream();
   const [selectedLesson, setSelectedLesson] = useState(0);
+
+  // Register CopilotKit state + actions at the top level (NEVER in child components)
+  useCopilotActions(course, startStream, isGenerating);
 
   return (
     <div className="flex flex-col h-full">

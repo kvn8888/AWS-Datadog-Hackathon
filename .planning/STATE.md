@@ -5,61 +5,71 @@
 See: .planning/PROJECT.md (updated 2026-02-20)
 
 **Core value:** Every code example in every lesson is tested and verified before the learner sees it
-**Current focus:** Phase 1 — Infrastructure
+**Current focus:** Complete — all 5 phases built
 
 ## Current Position
 
-Phase: 1 of 5 (Infrastructure)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-02-20 — Roadmap created, all 20 requirements mapped across 5 phases
+Phase: 5 of 5 (Polish) — COMPLETE
+Plan: 12 of 12 total plans completed
+Status: All plans executed and committed
+Last activity: 2026-02-20 — All phases built as Ralph loop
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: — min
-- Total execution time: 0 hours
+- Total plans completed: 12
+- Total execution time: ~1 session
+- All commits atomic per plan
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
-**Recent Trend:**
-- Last 5 plans: —
-- Trend: —
-
-*Updated after each plan completion*
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 1 - Infrastructure | 3 (01-01, 01-02, 01-03) | Complete |
+| 2 - Agents | 4 (02-01, 02-02, 02-03, 02-04) | Complete |
+| 3 - Pipeline + CopilotKit | 3 (03-01, 03-02, 03-03) | Complete |
+| 4 - Observability | 1 (04-01) | Complete |
+| 5 - Polish | 1 (05-01) | Complete |
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
+- ag_ui_strands==0.1.1 is the correct CopilotKit↔Strands bridge (NOT copilotkit Python SDK)
+- Python 3.12 required (3.13 breaks copilotkit)
+- MiniMax via direct httpx (no SDK)
+- TestSprite with 3 modes: execute, generate, local fallback
+- Validator/Fixer use Haiku, Creator/Planner use Sonnet
+- All CopilotKit actions registered in ONE hook at top-level
+- Strands agent.run() is sync — use run_in_executor() in async context
+- Mock pipeline fallback when real agents aren't importable
 
-- [Roadmap]: 5 phases derived from strict dependency chain — infrastructure before agents before pipeline before observability before polish
-- [Roadmap]: Schema (Pydantic models) locked at start of Phase 2 Plan 02-01, before any agent code is written
-- [Roadmap]: TestSprite API behavior unknown — Phase 1 Plan 01-03 pre-writes both Scenario A (code execution) and Scenario B (test-generation + local subprocess) Validator implementations
-- [Roadmap]: MiniMax calls use asyncio.gather (TTS + image per lesson in parallel) from first implementation in Phase 2
+### Git Commit History
+
+- `9dfa0c7` — feat(backend): backend skeleton (01-01)
+- `cd07803` — feat(frontend): Next.js frontend (01-02)
+- `2140018` — feat(tools): MiniMax + TestSprite wrappers (01-03)
+- `62272ae` — feat(models): lock schema (02-01)
+- `387eb2c` — feat(agents): all four agents (02-02/03/04)
+- `83c6459` — feat(orchestrator): wire pipeline (03-01)
+- `686f7aa` — feat(copilotkit): CopilotKit actions (03-02/03-03)
+- `b6c5700` — feat(observability): Datadog (04-01)
+- `bc46ff1` — feat(ui): on-demand test button (05-01)
 
 ### Pending Todos
 
-None yet.
+None — all plans complete.
 
 ### Blockers/Concerns
 
-- **TestSprite API behavior unknown** — Must confirm execution vs. test-generation model at the sponsor booth before writing Validator Agent (Plan 02-04). Two implementations pre-written in Plan 01-03 to de-risk.
-- **Bedrock model availability** — Specific model IDs must be enabled in the AWS account before build day. Confirm before Hour 1.
-- **MiniMax response shape** — TTS audio (URL vs. raw bytes) and image gen format must be confirmed on first actual API call in Plan 02-03. Adapt @tool implementation immediately if different from spec.
-- **Datadog OTLP receiver flag** — Verify `DD_OTLP_CONFIG_RECEIVER_HTTP_ENABLED` against current Agent docs before Phase 4.
+- **TestSprite API behavior unknown** — Local fallback mode active. Confirm API behavior at hackathon.
+- **Bedrock model availability** — Specific model IDs must be enabled in AWS account.
+- **MiniMax response shape** — TTS/image format may need adaptation on first real API call.
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Roadmap created, requirements mapped, ready to plan Phase 1
+Stopped at: All 12 plans complete. Product ready for integration testing.
 Resume file: None

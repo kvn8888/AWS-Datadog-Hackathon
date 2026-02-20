@@ -244,12 +244,13 @@ async def health():
 
 # ---------------------------------------------------------------------------
 # CopilotKit runtime endpoint via ag_ui_strands
-# Placeholder — mounts a minimal Strands agent for CopilotKit sidebar connectivity.
-# Real agent wiring happens in Phase 3 (03-03).
+# Handles both CopilotKit info probes and AG-UI RunAgentInput.
 # ---------------------------------------------------------------------------
 try:
     from strands import Agent
     from ag_ui_strands import StrandsAgent, create_strands_app
+    from fastapi import Request
+    from starlette.responses import JSONResponse
 
     _placeholder_agent = Agent(
         system_prompt=(
@@ -260,7 +261,44 @@ try:
     )
     _agui_agent = StrandsAgent(agent=_placeholder_agent, name="learnforge")
     copilotkit_app = create_strands_app(_agui_agent, "/")
-    app.mount("/copilotkit", copilotkit_app)
+
+    @app.api_route("/copilotkit", methods=["GET", "POST"])
+    async def copilotkit_proxy(request: Request):
+        """Handle CopilotKit requests — intercept info probes, forward AG-UI runs."""
+        if request.method == "GET":
+            return JSONResponse({"status": "ok"})
+
+        body = await request.json()
+
+        # CopilotKit info probe — respond with agent capabilities
+        if body.get("method") == "info":
+            return JSONResponse({
+                "agents": [{
+                    "name": "learnforge",
+                    "description": "AI course generation assistant that creates verified micro-courses on programming topics.",
+                }],
+                "actions": [],
+            })
+
+        # CopilotKit wraps AG-UI payload in {"method": "...", "body": {...}}
+        # Extract the inner body for the AG-UI Strands endpoint
+        forward_body = body
+        if "body" in body and isinstance(body["body"], dict):
+            forward_body = body["body"]
+
+        # Forward to the AG-UI Strands endpoint
+        from starlette.testclient import TestClient
+        client = TestClient(copilotkit_app)
+        headers = dict(request.headers)
+        headers.pop("host", None)
+        headers.pop("content-length", None)
+        response = client.post("/", json=forward_body, headers=headers)
+        return StreamingResponse(
+            iter([response.content]),
+            media_type=response.headers.get("content-type", "application/json"),
+            status_code=response.status_code,
+        )
+
 except ImportError:
     # ag_ui_strands or strands not installed yet — skip CopilotKit mount
     print("WARNING: ag_ui_strands not available, CopilotKit endpoint not mounted")

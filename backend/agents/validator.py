@@ -33,7 +33,7 @@ def create_validator_agent() -> Agent:
     """Create and return the Validator agent with TestSprite tool."""
     return Agent(
         system_prompt=VALIDATOR_SYSTEM_PROMPT,
-        model="us.anthropic.claude-haiku-4-5-20251001",  # Haiku for structured JSON work
+        model="minimax.minimax-m2.1",
         tools=[run_testsprite],
     )
 

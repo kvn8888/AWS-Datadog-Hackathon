@@ -7,7 +7,7 @@ Output: Complete Lesson JSON with explanation, code, quiz, audio_url, image_url
 
 import json
 from strands import Agent
-from tools.minimax import generate_narration, generate_visual
+from tools.minimax import generate_narration
 
 CREATOR_SYSTEM_PROMPT = """You are an expert programming instructor creating lesson content for a verified micro-course.
 
@@ -18,7 +18,7 @@ Given a lesson plan, produce a complete lesson with:
 
 CRITICAL: Every code example MUST be complete, runnable code. Include all imports. No pseudocode. No '...' placeholders. The code will be executed and tested.
 
-After writing the lesson content, use the generate_narration tool to create TTS audio of a brief summary (1-2 sentences about what this lesson teaches), and the generate_visual tool to create a concept diagram.
+After writing the lesson content, use the generate_narration tool to create TTS audio of a brief summary (1-2 sentences about what this lesson teaches).
 
 OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fencing:
 {
@@ -32,16 +32,16 @@ OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fencing:
     {"question": "...", "options": ["A", "B", "C", "D"], "correct_index": 0}
   ],
   "audio_url": "URL from generate_narration tool (or null)",
-  "image_url": "URL from generate_visual tool (or null)"
+  "image_url": null
 }"""
 
 
 def create_creator_agent() -> Agent:
-    """Create and return the Creator agent with MiniMax tools."""
+    """Create and return the Creator agent with MiniMax TTS tool."""
     return Agent(
         system_prompt=CREATOR_SYSTEM_PROMPT,
-        model="us.anthropic.claude-sonnet-4-5-v2:0",
-        tools=[generate_narration, generate_visual],
+        model="minimax.minimax-m2.1",
+        tools=[generate_narration],
     )
 
 

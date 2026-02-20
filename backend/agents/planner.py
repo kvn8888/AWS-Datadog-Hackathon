@@ -32,32 +32,48 @@ def create_planner_agent() -> Agent:
     """Create and return the Planner agent."""
     return Agent(
         system_prompt=PLANNER_SYSTEM_PROMPT,
-        model="us.anthropic.claude-sonnet-4-5-v2:0",
+        model="minimax.minimax-m2.1",
     )
 
 
 def parse_planner_output(raw_output: str) -> list[dict]:
     """Parse the Planner agent's JSON output into a list of lesson plans."""
-    # Strip markdown fencing if present
+    # Strip whitespace and markdown fencing
     text = raw_output.strip()
     if text.startswith("```"):
         lines = text.split("\n")
-        # Remove first and last lines (``` markers)
         lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines)
+        text = "\n".join(lines).strip()
 
+    # Try direct parse
     try:
         plans = json.loads(text)
         if isinstance(plans, list):
             return plans
+        # If it's a dict with a lessons key, extract that
+        if isinstance(plans, dict) and "lessons" in plans:
+            return plans["lessons"]
     except json.JSONDecodeError:
-        # Try to find JSON array in the output
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start >= 0 and end > start:
-            try:
-                return json.loads(text[start:end])
-            except json.JSONDecodeError:
-                pass
+        pass
 
-    raise ValueError(f"Could not parse Planner output as JSON array: {text[:200]}")
+    # Try to find JSON array in the output (model may have prose around it)
+    start = text.find("[")
+    end = text.rfind("]") + 1
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    # Try to find a JSON object wrapping lessons
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            obj = json.loads(text[start:end])
+            if isinstance(obj, dict) and "lessons" in obj:
+                return obj["lessons"]
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"Could not parse Planner output as JSON array: {text[:500]}")

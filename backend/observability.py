@@ -27,13 +27,20 @@ def init_observability():
         # Auto-instrument Bedrock SDK calls
         patch(botocore=True)
 
-        # Enable LLM Observability
-        LLMObs.enable(
-            ml_app="learnforge",
-            api_key=dd_api_key,
-            site=os.getenv("DD_SITE", "datadoghq.com"),
-            agentless=True,  # Send directly to Datadog intake
-        )
+        # Enable LLM Observability — try with agentless first, fall back for older ddtrace
+        try:
+            LLMObs.enable(
+                ml_app="learnforge",
+                api_key=dd_api_key,
+                site=os.getenv("DD_SITE", "datadoghq.com"),
+                agentless=True,
+            )
+        except TypeError:
+            LLMObs.enable(
+                ml_app="learnforge",
+                api_key=dd_api_key,
+                site=os.getenv("DD_SITE", "datadoghq.com"),
+            )
 
         print("Datadog LLM Observability enabled")
     except ImportError:

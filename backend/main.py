@@ -253,6 +253,7 @@ class ImageRequest(BaseModel):
 async def generate_lesson_audio(course_id: str, lesson_index: int, req: TTSRequest):
     """Generate TTS audio on demand for a lesson."""
     import os
+    import base64
 
     api_key = os.getenv("MINIMAX_API_KEY", "")
     if not api_key:
@@ -293,28 +294,71 @@ async def generate_lesson_audio(course_id: str, lesson_index: int, req: TTSReque
             resp.raise_for_status()
             data = resp.json()
 
+            # Extract audio bytes from MiniMax response
+            # MiniMax returns audio as hex string in data.audio.data,
+            # or base64, or sometimes a URL
+            audio_bytes: bytes | None = None
             audio_url = ""
+
             if isinstance(data, dict):
-                audio_url = data.get("audio_url", "")
-                if not audio_url:
-                    nested = data.get("data", {})
-                    if isinstance(nested, dict):
-                        nested_audio = nested.get("audio")
-                        if isinstance(nested_audio, dict):
-                            audio_url = nested_audio.get("audio_url", "")
-                        elif isinstance(nested_audio, str):
-                            if nested_audio.startswith("http"):
-                                audio_url = nested_audio
-                            elif len(nested_audio) > 100:
-                                audio_url = f"data:audio/mp3;base64,{nested_audio}"
-                        if not audio_url and isinstance(nested.get("audio_url"), str):
-                            audio_url = nested.get("audio_url", "")
-            elif isinstance(data, str):
-                if data.startswith("http"):
-                    audio_url = data
+                # Try data.audio.data (hex-encoded audio — most common)
+                nested = data.get("data", {})
+                if isinstance(nested, dict):
+                    audio_obj = nested.get("audio")
+                    if isinstance(audio_obj, dict):
+                        hex_data = audio_obj.get("data", "")
+                        if hex_data and isinstance(hex_data, str):
+                            try:
+                                audio_bytes = bytes.fromhex(hex_data)
+                            except ValueError:
+                                # Maybe it's base64
+                                try:
+                                    audio_bytes = base64.b64decode(hex_data)
+                                except Exception:
+                                    pass
+                        # Fallback: audio_url in the audio object
+                        if not audio_bytes:
+                            url = audio_obj.get("audio_url", "")
+                            if isinstance(url, str) and url.startswith("http"):
+                                audio_url = url
+
+                # Try data.audio as base64 string
+                if not audio_bytes and not audio_url:
+                    raw = nested.get("audio", "")
+                    if isinstance(raw, str) and len(raw) > 100:
+                        try:
+                            audio_bytes = base64.b64decode(raw)
+                        except Exception:
+                            try:
+                                audio_bytes = bytes.fromhex(raw)
+                            except Exception:
+                                pass
+
+                # Try top-level audio_url
+                if not audio_bytes and not audio_url:
+                    url = data.get("audio_url", "")
+                    if isinstance(url, str) and url.startswith("http"):
+                        audio_url = url
+
+            # Convert to a data URI the browser can play directly
+            if audio_bytes and len(audio_bytes) > 100:
+                b64 = base64.b64encode(audio_bytes).decode("ascii")
+                audio_url = f"data:audio/mp3;base64,{b64}"
+            elif audio_url and audio_url.startswith("http"):
+                # Proxy-fetch the remote URL to avoid CORS issues
+                try:
+                    audio_resp = await client.get(audio_url, timeout=30.0)
+                    audio_resp.raise_for_status()
+                    b64 = base64.b64encode(audio_resp.content).decode("ascii")
+                    audio_url = f"data:audio/mp3;base64,{b64}"
+                except Exception:
+                    pass  # Keep the original URL as fallback
 
             if not audio_url:
-                raise HTTPException(status_code=502, detail=f"No audio URL in MiniMax response: {str(data)[:160]}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"No audio in MiniMax response. Keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}"
+                )
 
             # Persist on the lesson (handle dict or model)
             lesson = lessons[lesson_index]
@@ -331,12 +375,13 @@ async def generate_lesson_audio(course_id: str, lesson_index: int, req: TTSReque
 
 @app.post("/course/{course_id}/lesson/{lesson_index}/image")
 async def generate_lesson_image(course_id: str, lesson_index: int, req: ImageRequest):
-    """Generate lesson concept image on demand via MiniMax."""
+    """Generate lesson concept image on demand via Gemini gemini-3-pro-image-preview."""
     import os
+    import base64
 
-    api_key = os.getenv("MINIMAX_API_KEY", "")
+    api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
-        raise HTTPException(status_code=501, detail="MINIMAX_API_KEY not configured")
+        raise HTTPException(status_code=501, detail="GEMINI_API_KEY not configured")
 
     course = _courses.get(course_id)
     if not course:
@@ -351,50 +396,54 @@ async def generate_lesson_image(course_id: str, lesson_index: int, req: ImageReq
     lesson_explanation = lesson.explanation if hasattr(lesson, 'explanation') else lesson.get("explanation", "")
 
     prompt = req.prompt or (
-        f"Clean minimal technical concept diagram for '{lesson_title}'. "
-        f"Context: {lesson_explanation[:700]}. No text overlays."
+        f"Generate a clean, minimal technical concept diagram or illustration for a programming lesson titled '{lesson_title}'. "
+        f"Context: {lesson_explanation[:500]}. "
+        f"Style: clean vector-style diagram, dark background (#0a0a14), use bright accent colors (purple, blue, green). "
+        f"No text labels. Simple and clear."
     )
-
-    payload: dict[str, Any] = {
-        "model": "image-01",
-        "prompt": prompt,
-        "aspect_ratio": req.aspect_ratio,
-        "response_format": "base64",
-    }
-    if req.subject_reference:
-        payload["subject_reference"] = req.subject_reference
 
     try:
         import httpx
         async with httpx.AsyncClient(timeout=90.0) as client:
+            # Gemini generateContent API with image generation
             resp = await client.post(
-                "https://api.minimax.io/v1/image_generation",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key={api_key}",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": prompt}
+                            ]
+                        }
+                    ],
+                    "generationConfig": {
+                        "responseModalities": ["TEXT", "IMAGE"],
+                    },
                 },
-                json=payload,
             )
             resp.raise_for_status()
             data = resp.json()
 
+            # Extract image from Gemini response
+            # Response shape: data.candidates[0].content.parts[] where part has inlineData.data (base64)
             image_url = ""
-            if isinstance(data, dict):
-                if isinstance(data.get("image_url"), str):
-                    image_url = data.get("image_url", "")
-
-                nested = data.get("data")
-                if not image_url and isinstance(nested, dict):
-                    if isinstance(nested.get("image_url"), str):
-                        image_url = nested.get("image_url", "")
-                    image_b64 = nested.get("image_base64")
-                    if not image_url and isinstance(image_b64, list) and image_b64:
-                        image_url = f"data:image/jpeg;base64,{image_b64[0]}"
-                    elif not image_url and isinstance(image_b64, str):
-                        image_url = f"data:image/jpeg;base64,{image_b64}"
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    inline = part.get("inlineData", {})
+                    if inline.get("data") and inline.get("mimeType", "").startswith("image/"):
+                        mime = inline["mimeType"]
+                        b64 = inline["data"]
+                        image_url = f"data:{mime};base64,{b64}"
+                        break
 
             if not image_url:
-                raise HTTPException(status_code=502, detail=f"No image in MiniMax response: {str(data)[:160]}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"No image in Gemini response: {str(data)[:200]}"
+                )
 
             if hasattr(lesson, 'image_url'):
                 lesson.image_url = image_url
@@ -403,7 +452,7 @@ async def generate_lesson_image(course_id: str, lesson_index: int, req: ImageReq
 
             return {"image_url": image_url}
     except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"MiniMax API error: {e.response.status_code}")
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {e.response.status_code} — {e.response.text[:200]}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

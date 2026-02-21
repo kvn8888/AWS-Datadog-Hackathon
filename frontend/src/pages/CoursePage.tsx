@@ -73,6 +73,8 @@ function AudioPlayer({ audioUrl, title }: { audioUrl: string; title: string }) {
       <audio
         ref={audioRef}
         src={audioUrl}
+        preload="auto"
+        onCanPlayThrough={() => setAudioError(null)}
         onTimeUpdate={() => {
           if (audioRef.current) {
             const duration = audioRef.current.duration;

@@ -344,12 +344,39 @@ async def regenerate_lesson(
         })
 
         t0 = time.time()
+
+        # Serialize existing lesson content so the Creator can build on it
+        existing_quiz = []
+        for q in old_lesson.quiz_questions:
+            if hasattr(q, 'model_dump'):
+                existing_quiz.append(q.model_dump())
+            elif hasattr(q, 'dict'):
+                existing_quiz.append(q.dict())
+            else:
+                existing_quiz.append(q)
+
+        existing_code = []
+        for ex in old_lesson.code_examples:
+            if hasattr(ex, 'model_dump'):
+                existing_code.append(ex.model_dump())
+            elif hasattr(ex, 'dict'):
+                existing_code.append(ex.dict())
+            else:
+                existing_code.append(ex)
+
+        import json
         creator_prompt = (
-            f"Regenerate this lesson with the following instruction: {instruction}\n"
-            f"Original lesson title: {old_lesson.title}\n"
-            f"Original objectives: {old_lesson.objectives}\n"
+            f"You are modifying an EXISTING lesson. Apply the user's instruction while KEEPING all existing content.\n"
+            f"User instruction: {instruction}\n\n"
+            f"EXISTING LESSON (preserve and build on this):\n"
+            f"Title: {old_lesson.title}\n"
+            f"Objectives: {json.dumps(old_lesson.objectives)}\n"
+            f"Explanation: {old_lesson.explanation}\n"
+            f"Code examples: {json.dumps(existing_code, default=str)}\n"
+            f"Quiz questions: {json.dumps(existing_quiz, default=str)}\n\n"
             f"Course topic: {course.topic}, difficulty: {course.difficulty}\n"
-            f"Be concise. 2 paragraphs max. 1-2 code examples max."
+            f"IMPORTANT: Keep ALL existing content (explanation, code examples, quiz questions) "
+            f"and ADD or MODIFY only what the user asked for. Do NOT remove existing items unless explicitly asked."
         )
         raw_lesson = await _run_agent(creator, creator_prompt)
         lesson_data = parse_creator_output(raw_lesson)
@@ -430,14 +457,26 @@ async def regenerate_lesson(
             "message": f"Validation: {overall.value}"
         })
 
+        # Preserve existing quiz questions if Creator didn't return any
+        new_quiz = lesson_data.get("quiz_questions", [])
+        if not new_quiz and old_lesson.quiz_questions:
+            new_quiz = []
+            for q in old_lesson.quiz_questions:
+                if hasattr(q, 'model_dump'):
+                    new_quiz.append(q.model_dump())
+                elif hasattr(q, 'dict'):
+                    new_quiz.append(q.dict())
+                else:
+                    new_quiz.append(q)
+
         course.lessons[lesson_index] = Lesson(
             title=lesson_data.get("title", old_lesson.title),
             objectives=lesson_data.get("objectives", old_lesson.objectives),
-            explanation=lesson_data.get("explanation", ""),
+            explanation=lesson_data.get("explanation", "") or old_lesson.explanation,
             code_examples=[CodeExample(**ex) for ex in code_examples],
-            quiz_questions=lesson_data.get("quiz_questions", []),
-            audio_url=lesson_data.get("audio_url"),
-            image_url=lesson_data.get("image_url"),
+            quiz_questions=new_quiz,
+            audio_url=lesson_data.get("audio_url") or old_lesson.audio_url,
+            image_url=lesson_data.get("image_url") or old_lesson.image_url,
             validation_status=overall,
         )
 

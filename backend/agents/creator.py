@@ -8,18 +8,15 @@ Output: Complete Lesson JSON with explanation, code, quiz, audio_url, image_url
 import json
 from strands import Agent
 from strands.models.gemini import GeminiModel
-from tools.minimax import generate_narration
 
 CREATOR_SYSTEM_PROMPT = """You are an expert programming instructor creating lesson content for a verified micro-course.
 
 Given a lesson plan, produce a complete lesson with:
-1. A clear, engaging explanation (2-4 paragraphs)
-2. 1-3 code examples that demonstrate the concept (MUST be runnable Python code)
+1. A clear, engaging explanation (2-3 paragraphs)
+2. 1-2 code examples that demonstrate the concept (MUST be runnable Python code)
 3. 1-2 quiz questions with 4 options each
 
-CRITICAL: Every code example MUST be complete, runnable code. Include all imports. No pseudocode. No '...' placeholders. The code will be executed and tested.
-
-After writing the lesson content, use the generate_narration tool to create TTS audio of a brief summary (1-2 sentences about what this lesson teaches).
+CRITICAL: Every code example MUST be complete, runnable code. Include all imports. No pseudocode. No '...' placeholders. No external libraries that need pip install. The code will be executed and tested.
 
 OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fencing:
 {
@@ -32,17 +29,16 @@ OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fencing:
   "quiz_questions": [
     {"question": "...", "options": ["A", "B", "C", "D"], "correct_index": 0}
   ],
-  "audio_url": "URL from generate_narration tool (or null)",
+  "audio_url": null,
   "image_url": null
 }"""
 
 
 def create_creator_agent() -> Agent:
-    """Create and return the Creator agent with MiniMax TTS tool."""
+    """Create and return the Creator agent (no tools for speed)."""
     return Agent(
         system_prompt=CREATOR_SYSTEM_PROMPT,
         model=GeminiModel(model_id="gemini-3-flash-preview"),
-        tools=[generate_narration],
     )
 
 

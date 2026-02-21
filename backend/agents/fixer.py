@@ -8,38 +8,34 @@ Output: Fixed code that passes validation
 import json
 from strands import Agent
 from strands.models.gemini import GeminiModel
-from tools.testsprite import run_testsprite
 
 FIXER_SYSTEM_PROMPT = """You are an expert Python developer who fixes broken code. Given code that failed validation and its error message, you must:
 
 1. Analyze the error to understand the root cause
 2. Rewrite the code to fix the issue while preserving the original intent
-3. Use the run_testsprite tool to verify your fix works
-4. If it still fails, try again (up to 3 attempts total)
 
 RULES:
 - Keep the code's educational purpose intact — don't simplify it to the point of being trivial
 - All code must be complete and runnable (include all imports)
 - Don't change the fundamental approach unless the original approach is fundamentally wrong
-- If after 3 attempts the code still fails, return the best version you have
+- Be minimal — fix only the error
 
-OUTPUT FORMAT — respond with ONLY valid JSON:
+OUTPUT FORMAT — respond with ONLY valid JSON, no markdown fencing:
 {
   "fixed_code": "the corrected complete runnable code",
   "explanation": "brief explanation of what was wrong and how you fixed it",
   "passed": true,
-  "attempts": 2
+  "attempts": 1
 }"""
 
 MAX_FIX_ITERATIONS = 3
 
 
 def create_fixer_agent() -> Agent:
-    """Create and return the Fixer agent with TestSprite tool."""
+    """Create and return the Fixer agent (no tools — orchestrator validates directly)."""
     return Agent(
         system_prompt=FIXER_SYSTEM_PROMPT,
         model=GeminiModel(model_id="gemini-3-flash-preview"),
-        tools=[run_testsprite],
     )
 
 

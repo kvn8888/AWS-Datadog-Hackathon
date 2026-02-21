@@ -156,8 +156,12 @@ export default function GeneratePage() {
 
         es.onerror = () => {
           if (!aborted && !done) {
-            addLog('system', 'error', 'Stream connection lost');
-            es?.close();
+            // EventSource auto-reconnects on error; only log if we haven't completed
+            // Close and show error only if it's a real failure (not just stream end)
+            if (es?.readyState === EventSource.CLOSED) {
+              addLog('system', 'error', 'Stream connection lost');
+              setError('Stream connection lost');
+            }
           }
         };
       } catch (err: any) {
@@ -179,21 +183,25 @@ export default function GeneratePage() {
         } else if (status === 'done') {
           setAgent('planner', 'done');
           bumpProgress(18);
-          addLog('planner', 'success', `Planned ${data.lessons} lessons`);
+          const elapsed = data.elapsed ? ` (${data.elapsed}s)` : '';
+          addLog('planner', 'success', data.message || `Planned ${data.lessons} lessons${elapsed}`);
         }
       } else if (agent === 'creator') {
         if (status === 'running') {
           setAgent('creator', 'active');
-          addLog('creator', 'info', `Writing Lesson ${(data.lesson ?? 0) + 1}${data.title ? `: ${data.title}` : ''}...`);
+          addLog('creator', 'info', data.message || `Writing Lesson ${(data.lesson ?? 0) + 1}${data.title ? `: ${data.title}` : ''}...`);
         } else if (status === 'done') {
           setAgent('creator', 'done');
           bumpProgress(Math.min(progressRef.current + 8, 45));
-          addLog('creator', 'success', `Lesson ${(data.lesson ?? 0) + 1} written`);
+          const elapsed = data.elapsed ? ` (${data.elapsed}s)` : '';
+          addLog('creator', 'success', data.message || `Lesson ${(data.lesson ?? 0) + 1} written${elapsed}`);
         }
       } else if (agent === 'validator') {
         if (status === 'running') {
           setAgent('validator', 'active');
-          addLog('validator', 'info', `Validating code examples in lesson ${(data.lesson ?? 0) + 1}...`);
+          addLog('validator', 'info', data.message || `Validating code examples in lesson ${(data.lesson ?? 0) + 1}...`);
+        } else if (status === 'progress') {
+          addLog('validator', data.passed ? 'success' : 'error', data.message || `Snippet ${(data.snippet ?? 0) + 1}: ${data.passed ? 'PASS' : 'FAIL'}`);
         } else if (status === 'done') {
           const vs: string = data.status || 'pass';
           if (vs === 'fail') {
@@ -212,10 +220,21 @@ export default function GeneratePage() {
         if (status === 'running') {
           setAgent('fixer', 'active');
           setFeedbackLoops(l => l + 1);
-          addLog('fixer', 'fix', `↻ Fixing ${data.failures || 1} failure(s) in lesson ${(data.lesson ?? 0) + 1}...`);
+          addLog('fixer', 'fix', data.message || `↻ Fixing ${data.failures || 1} failure(s) in lesson ${(data.lesson ?? 0) + 1}...`);
         } else if (status === 'done') {
           setAgent('fixer', 'done');
-          addLog('fixer', 'success', `✓ Fixed ${data.fixed || data.failures || 1} example(s) — re-validating`);
+          const elapsed = data.elapsed ? ` (${data.elapsed}s)` : '';
+          addLog('fixer', 'success', `✓ Fixed ${data.fixed || data.failures || 1} example(s)${elapsed}`);
+        }
+      } else if (agent === 'processing') {
+        if (status === 'running') {
+          addLog('system', 'info', data.message || 'Processing lessons...');
+        } else if (status === 'lesson_done') {
+          const elapsed = data.elapsed ? ` (${data.elapsed}s)` : '';
+          addLog('system', 'success', data.message || `Lesson ${(data.lesson ?? 0) + 1} complete${elapsed}`);
+          bumpProgress(Math.min(progressRef.current + 10, 90));
+        } else if (status === 'error') {
+          addLog('system', 'error', data.message || 'Processing error');
         }
       } else if (agent === 'orchestrator') {
         if (status === 'complete') {

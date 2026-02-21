@@ -40,10 +40,17 @@ async def emit_event(queue: asyncio.Queue, agent: str, status: str, data: dict) 
 
 
 async def sse_generator(course_id: str) -> AsyncGenerator[str, None]:
-    """Async generator that drains the course queue as SSE data frames."""
+    """Async generator that drains the course queue as SSE data frames.
+    
+    Sends a keepalive comment every 15s to prevent connection timeout.
+    """
     queue = get_or_create_queue(course_id)
     while True:
-        event = await queue.get()
-        yield f"data: {json.dumps(asdict(event))}\n\n"
-        if event.status in ("complete", "error"):
-            break
+        try:
+            event = await asyncio.wait_for(queue.get(), timeout=15.0)
+            yield f"data: {json.dumps(asdict(event))}\n\n"
+            if event.status in ("complete", "error"):
+                break
+        except asyncio.TimeoutError:
+            # Send SSE comment as keepalive to prevent connection drop
+            yield ": keepalive\n\n"

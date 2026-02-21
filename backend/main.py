@@ -261,7 +261,7 @@ try:
         ),
         model=GeminiModel(model_id="gemini-3-flash-preview"),
     )
-    _agui_agent = StrandsAgent(agent=_placeholder_agent, name="learnforge")
+    _agui_agent = StrandsAgent(agent=_placeholder_agent, name="default")
     copilotkit_app = create_strands_app(_agui_agent, "/")
 
     @app.api_route("/copilotkit", methods=["GET", "POST"])
@@ -276,7 +276,7 @@ try:
         if body.get("method") == "info":
             return JSONResponse({
                 "agents": [{
-                    "name": "learnforge",
+                    "name": "default",
                     "description": "AI course generation assistant that creates verified micro-courses on programming topics.",
                 }],
                 "actions": [],

@@ -66,20 +66,12 @@ function HomeLayout() {
 
 function CourseLayoutWithCopilot() {
   return (
-    <CopilotSidebar
-      defaultOpen={false}
-      labels={{
-        title: "LearnForge Assistant",
-        initial: "Your course is ready! Ask me to adjust difficulty, add examples, simplify any lesson, or regenerate specific sections.",
-      }}
-    >
-      <div className="flex flex-col h-screen bg-background">
-        <TopBar />
-        <div className="flex-1 overflow-hidden">
-          <Outlet />
-        </div>
+    <div className="flex flex-col h-screen bg-background">
+      <TopBar />
+      <div className="flex-1 overflow-hidden">
+        <Outlet />
       </div>
-    </CopilotSidebar>
+    </div>
   );
 }
 

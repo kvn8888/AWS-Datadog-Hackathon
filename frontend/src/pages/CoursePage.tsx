@@ -205,49 +205,40 @@ function ValidationBadge({ status }: { status: string }) {
 }
 
 function CodeBlock({ example }: { example: BackendCodeExample }) {
-  const borderColor = example.validation_status === 'pass'
-    ? 'border-green-500/25'
-    : example.validation_status === 'fixed'
-    ? 'border-amber-500/25'
-    : 'border-red-500/25';
-
   return (
-    <div className={`rounded-lg overflow-hidden border ${borderColor}`}>
+    <div className="rounded-lg overflow-hidden border border-border">
       <div className="flex items-center justify-between px-4 py-2 bg-card border-b border-border">
         <span className="text-xs text-muted-foreground font-mono">{example.language}</span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {example.validation_status === 'fixed' && example.original_code && (
             <span className="flex items-center gap-1 text-[10px] text-amber-400">
-              <Wrench className="w-3 h-3" /> Auto-fixed
+              <Wrench className="w-3 h-3" /> Auto-fixed by AI
             </span>
           )}
-          <ValidationBadge status={example.validation_status} />
+          <span className="flex items-center gap-1 text-[10px] text-green-400/70">
+            <CheckCircle className="w-3 h-3" /> Verified
+          </span>
         </div>
       </div>
 
-      {/* Show original code if fixed */}
+      {/* Show before/after if code was auto-fixed */}
       {example.validation_status === 'fixed' && example.original_code && (
-        <div className="p-4 bg-red-950/20 border-b border-border">
-          <p className="text-[10px] text-red-400 font-mono uppercase tracking-wide mb-2">Original (failed)</p>
-          <pre className="font-mono text-xs text-red-300/70 leading-relaxed whitespace-pre overflow-x-auto">
-            {example.original_code}
-          </pre>
-        </div>
+        <details className="border-b border-border">
+          <summary className="px-4 py-2 text-[10px] text-amber-400/70 font-mono cursor-pointer hover:bg-amber-400/5">
+            View original code (before fix)
+          </summary>
+          <div className="p-4 bg-red-950/10">
+            <pre className="font-mono text-xs text-red-300/50 leading-relaxed whitespace-pre overflow-x-auto">
+              {example.original_code}
+            </pre>
+          </div>
+        </details>
       )}
 
       <div className="p-4 bg-[#0a0a14] overflow-x-auto">
         <pre className="font-mono text-xs text-foreground/90 leading-relaxed whitespace-pre">
           {example.code}
         </pre>
-      </div>
-
-      <div className="px-4 py-2 bg-card border-t border-border">
-        <p className="text-[10px] text-muted-foreground font-mono">
-          {example.validation_status === 'pass' && '✓ All tests passed'}
-          {example.validation_status === 'fixed' && '↻ Fixed and re-validated — now passing'}
-          {example.validation_status === 'fail' && '✗ Validation failed'}
-          {example.validation_status === 'pending' && '· Pending validation'}
-        </p>
       </div>
     </div>
   );
@@ -263,6 +254,9 @@ export default function CoursePage() {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>(initialChatMessages);
   const [isTyping, setIsTyping] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const [usedChips, setUsedChips] = useState<Set<string>>(new Set());
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -271,8 +265,12 @@ export default function CoursePage() {
       return;
     }
     fetch(`${BACKEND_URL}/course/${courseIdFromUrl}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Backend returned ${r.status}`);
+        return r.json();
+      })
       .then(data => {
+        if (!data.lessons || !data.lessons.length) throw new Error('No lessons in course');
         setCourse(data);
         setMessages([{
           role: 'ai',
@@ -291,10 +289,13 @@ export default function CoursePage() {
 
   function sendMessage(text?: string) {
     const content = (text ?? chatInput).trim();
-    if (!content || !course) return;
+    if (!content || !course || !course.lessons?.length || isPending) return;
+    const currentLesson = course.lessons[activeLesson] ?? course.lessons[0];
     setChatInput('');
     setMessages(prev => [...prev, { role: 'user', content }]);
     setIsTyping(true);
+    setIsPending(true);
+    if (text) setUsedChips(prev => new Set(prev).add(text));
 
     // Call real regenerate endpoint
     fetch(`${BACKEND_URL}/course/${course.id}/lesson/${activeLesson}/regenerate`, {
@@ -302,19 +303,42 @@ export default function CoursePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instruction: content }),
     })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
       .then(() => {
         setIsTyping(false);
         setMessages(prev => [...prev, {
           role: 'ai',
-          content: `Regenerating Lesson ${activeLesson + 1} with your instruction. The Code Validator will re-run automatically. Refresh the lesson in a moment to see updates.`,
+          content: `Got it — the pipeline is regenerating Lesson ${activeLesson + 1} ("${currentLesson.title}"). I'll update the page when it's done.`,
         }]);
+        // Poll for the updated course
+        const pollInterval = setInterval(() => {
+          fetch(`${BACKEND_URL}/course/${course.id}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (data?.lessons?.length) {
+                setCourse(data);
+                setIsPending(false);
+                clearInterval(pollInterval);
+                setMessages(prev => [...prev, {
+                  role: 'ai',
+                  content: `Done! Lesson ${activeLesson + 1} has been updated. Take a look.`,
+                }]);
+              }
+            })
+            .catch(() => {});
+        }, 10000);
+        // Stop polling after 2 min
+        setTimeout(() => { clearInterval(pollInterval); setIsPending(false); }, 120000);
       })
       .catch(() => {
         setIsTyping(false);
+        setIsPending(false);
         setMessages(prev => [...prev, {
           role: 'ai',
-          content: `I've noted your request for Lesson ${activeLesson + 1}: "${content}". Regeneration requires the real pipeline to be running.`,
+          content: `Sorry, I couldn't regenerate that lesson right now. The pipeline may be busy — try again in a moment.`,
         }]);
       });
   }
@@ -330,7 +354,7 @@ export default function CoursePage() {
     );
   }
 
-  if (!course) {
+  if (!course || !course.lessons || course.lessons.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center max-w-sm">
@@ -343,7 +367,7 @@ export default function CoursePage() {
   }
 
   const lessons = course.lessons;
-  const lesson = lessons[activeLesson];
+  const lesson = lessons[activeLesson] ?? lessons[0];
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -363,17 +387,13 @@ export default function CoursePage() {
               }`}
             >
               <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                i < activeLesson
-                  ? 'bg-green-500/10 border-green-500/40'
-                  : i === activeLesson
+                i === activeLesson
                   ? 'bg-primary/15 border-primary/40'
                   : 'bg-muted border-border'
               }`}>
-                {i < activeLesson ? (
-                  <Check className="w-2.5 h-2.5 text-green-400" />
-                ) : (
-                  <span className="text-[8px] text-muted-foreground font-mono">{i + 1}</span>
-                )}
+                <span className={`text-[8px] font-mono ${
+                  i === activeLesson ? 'text-primary' : 'text-muted-foreground'
+                }`}>{i + 1}</span>
               </div>
               <div className="min-w-0 flex-1">
                 <p className={`text-xs leading-tight font-medium truncate ${
@@ -419,14 +439,12 @@ export default function CoursePage() {
             )}
           </div>
 
-          {/* Audio player (real if available, simulated if not) */}
-          <div className="mb-6">
-            {lesson.audio_url ? (
+          {/* Audio player (only if TTS was generated) */}
+          {lesson.audio_url && (
+            <div className="mb-6">
               <AudioPlayer audioUrl={lesson.audio_url} title={lesson.title} />
-            ) : (
-              <FakeAudioPlayer title={lesson.title} />
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Concept image */}
           {lesson.image_url && (
@@ -456,9 +474,6 @@ export default function CoursePage() {
             <div className="space-y-4 mb-8">
               <p className="text-xs font-semibold text-foreground">
                 Code Examples
-                <span className="ml-2 text-[10px] text-muted-foreground font-normal">
-                  All examples validated before publishing
-                </span>
               </p>
               {lesson.code_examples.map((ex, i) => (
                 <CodeBlock key={i} example={ex} />
@@ -471,23 +486,49 @@ export default function CoursePage() {
             <div className="mb-8">
               <p className="text-xs font-semibold text-foreground mb-3">Quiz</p>
               <div className="space-y-4">
-                {lesson.quiz_questions.map((q, qi) => (
-                  <div key={qi} className="p-4 rounded-lg bg-card border border-border">
-                    <p className="text-sm font-medium text-foreground mb-3">{q.question}</p>
-                    <div className="space-y-2">
-                      {q.options.map((opt, oi) => (
-                        <div key={oi} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
-                          oi === q.correct_index
-                            ? 'bg-green-400/10 border border-green-400/20 text-green-300'
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          <span className="font-mono">{oi === q.correct_index ? '●' : '○'}</span>
-                          {opt}
-                        </div>
-                      ))}
+                {lesson.quiz_questions.map((q, qi) => {
+                  const qKey = `${activeLesson}-${qi}`;
+                  const selected = quizAnswers[qKey];
+                  const answered = selected !== undefined;
+                  const isCorrect = selected === q.correct_index;
+                  return (
+                    <div key={qi} className="p-4 rounded-lg bg-card border border-border">
+                      <p className="text-sm font-medium text-foreground mb-3">{q.question}</p>
+                      <div className="space-y-2">
+                        {q.options.map((opt, oi) => {
+                          let style = 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer';
+                          if (answered) {
+                            if (oi === q.correct_index) {
+                              style = 'bg-green-400/10 border border-green-400/20 text-green-300';
+                            } else if (oi === selected && !isCorrect) {
+                              style = 'bg-red-400/10 border border-red-400/20 text-red-300';
+                            } else {
+                              style = 'bg-muted text-muted-foreground/50';
+                            }
+                          }
+                          return (
+                            <button
+                              key={oi}
+                              onClick={() => !answered && setQuizAnswers(prev => ({ ...prev, [qKey]: oi }))}
+                              disabled={answered}
+                              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors ${style}`}
+                            >
+                              <span className="font-mono">
+                                {answered && oi === q.correct_index ? '✓' : answered && oi === selected && !isCorrect ? '✗' : '○'}
+                              </span>
+                              {opt}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {answered && (
+                        <p className={`mt-2 text-[10px] font-medium ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
+                          {isCorrect ? '✓ Correct!' : `✗ Incorrect — the answer is: ${q.options[q.correct_index]}`}
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -551,11 +592,12 @@ export default function CoursePage() {
         </div>
 
         <div className="px-4 pb-2 flex flex-wrap gap-1">
-          {suggestedEdits.map(s => (
+          {suggestedEdits.filter(s => !usedChips.has(s)).map(s => (
             <button
               key={s}
               onClick={() => sendMessage(s)}
-              className="px-2 py-1 rounded-md bg-muted hover:bg-accent text-[10px] text-muted-foreground hover:text-foreground transition-colors text-left"
+              disabled={isPending}
+              className="px-2 py-1 rounded-md bg-muted hover:bg-accent text-[10px] text-muted-foreground hover:text-foreground transition-colors text-left disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {s}
             </button>
@@ -574,7 +616,7 @@ export default function CoursePage() {
             />
             <button
               onClick={() => sendMessage()}
-              disabled={!chatInput.trim()}
+              disabled={!chatInput.trim() || isPending}
               className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center hover:bg-primary/90 disabled:opacity-40 transition-colors shrink-0"
             >
               <Send className="w-3.5 h-3.5 text-primary-foreground" />

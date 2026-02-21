@@ -47,9 +47,13 @@ def _validate_code_directly(code: str, language: str = "python") -> dict:
 
 async def _process_lesson(
     i: int, plan: dict, topic: str, difficulty: str,
-    creator, fixer, queue: asyncio.Queue
+    queue: asyncio.Queue
 ) -> tuple[Lesson, int, int, int]:
     """Process a single lesson: create → validate → fix. Returns (lesson, checks, failures, fixes)."""
+    # Create per-lesson agent instances (Strands doesn't support concurrent use)
+    creator = create_creator_agent()
+    fixer = create_fixer_agent()
+
     lesson_start = time.time()
     total_checks = 0
     total_failures = 0
@@ -143,12 +147,18 @@ async def _process_lesson(
 
                     raw_fix = await _run_agent(fixer, fixer_prompt)
                     fix_result = parse_fixer_output(raw_fix)
+                    fixed_code = fix_result.get("fixed_code", original_code)
+
+                    # Re-validate the fixed code directly (don't trust LLM's "passed")
+                    revalidation = await asyncio.get_event_loop().run_in_executor(
+                        None, _validate_code_directly, fixed_code, code_examples[idx].get("language", "python")
+                    )
 
                     code_examples[idx] = {
                         "language": code_examples[idx].get("language", "python"),
-                        "code": fix_result.get("fixed_code", original_code),
+                        "code": fixed_code,
                         "original_code": original_code,
-                        "validation_status": "fixed" if fix_result.get("passed") else "fail",
+                        "validation_status": "fixed" if revalidation.get("passed") else "fail",
                     }
                     total_fixes += 1
 
@@ -247,16 +257,13 @@ async def generate_course(topic: str, difficulty: str, queue: asyncio.Queue, cou
         # ---------------------------------------------------------------
         # 2-4. PARALLEL: Creator → Validator → Fixer per lesson
         # ---------------------------------------------------------------
-        creator = create_creator_agent()
-        fixer = create_fixer_agent()
-
         await emit_event(queue, "processing", "running", {
             "message": f"Processing {len(lesson_plans)} lessons in parallel..."
         })
 
-        # Process all lessons concurrently
+        # Process all lessons concurrently (each creates its own agent instances)
         tasks = [
-            _process_lesson(i, plan, topic, difficulty, creator, fixer, queue)
+            _process_lesson(i, plan, topic, difficulty, queue)
             for i, plan in enumerate(lesson_plans)
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)

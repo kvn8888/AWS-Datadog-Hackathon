@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Check, CheckCircle, ChevronLeft, ChevronRight, Play, Send, Wrench, AlertCircle, Volume2 } from 'lucide-react';
+import { Check, CheckCircle, ChevronLeft, ChevronRight, Play, Send, Wrench, AlertCircle, Volume2, Image as ImageIcon } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { initialChatMessages, type ChatMessage } from '@/data/mockData';
 
@@ -43,15 +43,29 @@ function AudioPlayer({ audioUrl, title }: { audioUrl: string; title: string }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   function togglePlay() {
     if (!audioRef.current) return;
+    if (audioError) return;
+
     if (playing) {
       audioRef.current.pause();
+      setPlaying(false);
     } else {
-      audioRef.current.play();
+      const playPromise = audioRef.current.play();
+      if (playPromise && typeof playPromise.then === 'function') {
+        playPromise.then(() => {
+          setAudioError(null);
+          setPlaying(true);
+        }).catch(() => {
+          setPlaying(false);
+          setAudioError('This audio source is not playable in your browser.');
+        });
+      } else {
+        setPlaying(true);
+      }
     }
-    setPlaying(!playing);
   }
 
   return (
@@ -61,8 +75,18 @@ function AudioPlayer({ audioUrl, title }: { audioUrl: string; title: string }) {
         src={audioUrl}
         onTimeUpdate={() => {
           if (audioRef.current) {
-            setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100 || 0);
+            const duration = audioRef.current.duration;
+            const current = audioRef.current.currentTime;
+            if (Number.isFinite(duration) && duration > 0 && Number.isFinite(current)) {
+              setProgress((current / duration) * 100);
+            } else {
+              setProgress(0);
+            }
           }
+        }}
+        onError={() => {
+          setPlaying(false);
+          setAudioError('Audio failed to load. Try generating it again.');
         }}
         onEnded={() => setPlaying(false)}
       />
@@ -81,17 +105,169 @@ function AudioPlayer({ audioUrl, title }: { audioUrl: string; title: string }) {
         <div
           className="flex-1 h-1 bg-muted rounded-full cursor-pointer"
           onClick={e => {
-            if (!audioRef.current) return;
+            if (!audioRef.current || audioError) return;
             const rect = e.currentTarget.getBoundingClientRect();
-            const pct = ((e.clientX - rect.left) / rect.width);
-            audioRef.current.currentTime = pct * audioRef.current.duration;
+            if (!Number.isFinite(rect.width) || rect.width <= 0) return;
+
+            const pctRaw = (e.clientX - rect.left) / rect.width;
+            if (!Number.isFinite(pctRaw)) return;
+
+            const pct = Math.min(1, Math.max(0, pctRaw));
+            const duration = audioRef.current.duration;
+            if (!Number.isFinite(duration) || duration <= 0) return;
+
+            const target = pct * duration;
+            if (!Number.isFinite(target)) return;
+            audioRef.current.currentTime = target;
           }}
         >
           <div className="h-full bg-primary rounded-full" style={{ width: `${progress}%` }} />
         </div>
         <span className="text-[10px] text-muted-foreground font-mono shrink-0">{title}</span>
       </div>
+      {audioError && (
+        <div className="px-4 pb-3 text-[10px] text-red-400">{audioError}</div>
+      )}
     </div>
+  );
+}
+
+function GenerateImageButton({
+  courseId,
+  lessonIndex,
+  lessonTitle,
+  explanation,
+  onImageReady,
+}: {
+  courseId: string;
+  lessonIndex: number;
+  lessonTitle: string;
+  explanation: string;
+  onImageReady: (url: string) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${BACKEND_URL}/course/${courseId}/lesson/${lessonIndex}/image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Create a clean technical concept diagram for ${lessonTitle}. Context: ${explanation.slice(0, 700)}`,
+          aspect_ratio: '16:9',
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      const imageUrl = typeof data.image_url === 'string' ? data.image_url : '';
+      const isRenderable = imageUrl.startsWith('http') || imageUrl.startsWith('data:image/');
+      if (imageUrl && isRenderable) {
+        onImageReady(imageUrl);
+      } else {
+        throw new Error('Image generated but no renderable URL returned');
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate image');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleGenerate}
+      disabled={generating}
+      className="w-full rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors px-4 py-3 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+    >
+      <ImageIcon className="w-4 h-4 text-primary shrink-0" />
+      {generating ? (
+        <>
+          <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-xs text-muted-foreground">Generating concept image…</span>
+        </>
+      ) : error ? (
+        <span className="text-xs text-red-400">{error}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          <span className="text-foreground font-medium">Generate concept image</span>
+          <span className="ml-1.5">— on demand</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ListenButton({
+  courseId,
+  lessonIndex,
+  lessonTitle,
+  explanation,
+  onAudioReady,
+}: {
+  courseId: string;
+  lessonIndex: number;
+  lessonTitle: string;
+  explanation: string;
+  onAudioReady: (url: string) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setError(null);
+    try {
+      const resp = await fetch(`${BACKEND_URL}/course/${courseId}/lesson/${lessonIndex}/audio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: explanation.slice(0, 5000) }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      const audioUrl = typeof data.audio_url === 'string' ? data.audio_url : '';
+      const isPlayable = audioUrl.startsWith('http') || audioUrl.startsWith('data:audio/');
+      if (audioUrl && isPlayable) {
+        onAudioReady(audioUrl);
+      } else {
+        throw new Error('Audio generated but no playable URL returned');
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate audio');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleGenerate}
+      disabled={generating}
+      className="w-full rounded-lg border border-border bg-[#0a0a14] hover:bg-muted/30 transition-colors px-4 py-3 flex items-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+    >
+      <Volume2 className="w-4 h-4 text-primary shrink-0" />
+      {generating ? (
+        <>
+          <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-xs text-muted-foreground">Generating audio for "{lessonTitle}"…</span>
+        </>
+      ) : error ? (
+        <span className="text-xs text-red-400">{error}</span>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          <span className="text-foreground font-medium">Listen to this lesson</span>
+          <span className="ml-1.5">— generate audio narration</span>
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -439,26 +615,54 @@ export default function CoursePage() {
             )}
           </div>
 
-          {/* Audio player (only if TTS was generated) */}
-          {lesson.audio_url && (
-            <div className="mb-6">
+          {/* Audio — on-demand TTS generation */}
+          <div className="mb-6">
+            {lesson.audio_url ? (
               <AudioPlayer audioUrl={lesson.audio_url} title={lesson.title} />
-            </div>
-          )}
-
-          {/* Concept image */}
-          {lesson.image_url && (
-            <div className="mb-6 rounded-lg overflow-hidden border border-border">
-              <img
-                src={lesson.image_url}
-                alt={`Concept diagram for ${lesson.title}`}
-                className="w-full object-cover"
+            ) : (
+              <ListenButton
+                courseId={course.id}
+                lessonIndex={activeLesson}
+                lessonTitle={lesson.title}
+                explanation={lesson.explanation}
+                onAudioReady={(url) => {
+                  const updated = { ...course };
+                  updated.lessons = [...course.lessons];
+                  updated.lessons[activeLesson] = { ...lesson, audio_url: url };
+                  setCourse(updated as BackendCourse);
+                }}
               />
-              <p className="px-4 py-2 text-[10px] text-muted-foreground bg-card border-t border-border">
-                MiniMax concept visual
-              </p>
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* Concept image — on-demand generation */}
+          <div className="mb-6">
+            {lesson.image_url ? (
+              <div className="rounded-lg overflow-hidden border border-border">
+                <img
+                  src={lesson.image_url}
+                  alt={`Concept diagram for ${lesson.title}`}
+                  className="w-full object-cover"
+                />
+                <p className="px-4 py-2 text-[10px] text-muted-foreground bg-card border-t border-border">
+                  Concept visual
+                </p>
+              </div>
+            ) : (
+              <GenerateImageButton
+                courseId={course.id}
+                lessonIndex={activeLesson}
+                lessonTitle={lesson.title}
+                explanation={lesson.explanation}
+                onImageReady={(url) => {
+                  const updated = { ...course };
+                  updated.lessons = [...course.lessons];
+                  updated.lessons[activeLesson] = { ...lesson, image_url: url };
+                  setCourse(updated as BackendCourse);
+                }}
+              />
+            )}
+          </div>
 
           {/* Explanation */}
           <div className="mb-6">

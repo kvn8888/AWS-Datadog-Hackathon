@@ -88,6 +88,20 @@ async def _process_lesson(
 
     # --- VALIDATOR (direct code execution, no LLM) ---
     code_examples = lesson_data.get("code_examples", [])
+    # Normalize: ensure each item is a dict with "code" and "language" keys
+    _normalized = []
+    for _ex in code_examples:
+        if isinstance(_ex, str):
+            _normalized.append({"code": _ex, "language": "python", "validation_status": "pending"})
+        elif isinstance(_ex, dict):
+            _normalized.append(_ex)
+        elif hasattr(_ex, 'model_dump'):
+            _normalized.append(_ex.model_dump())
+        elif hasattr(_ex, 'dict'):
+            _normalized.append(_ex.dict())
+        else:
+            _normalized.append({"code": str(_ex), "language": "python", "validation_status": "pending"})
+    code_examples = _normalized
     total_checks = len(code_examples)
 
     if code_examples:
@@ -396,6 +410,20 @@ async def regenerate_lesson(
 
         # Validate directly (no LLM)
         code_examples = lesson_data.get("code_examples", [])
+        # Normalize: ensure each item is a dict with "code" and "language" keys
+        normalized = []
+        for ex in code_examples:
+            if isinstance(ex, str):
+                normalized.append({"code": ex, "language": "python", "validation_status": "pending"})
+            elif isinstance(ex, dict):
+                normalized.append(ex)
+            elif hasattr(ex, 'model_dump'):
+                normalized.append(ex.model_dump())
+            elif hasattr(ex, 'dict'):
+                normalized.append(ex.dict())
+            else:
+                normalized.append({"code": str(ex), "language": "python", "validation_status": "pending"})
+        code_examples = normalized
         if code_examples:
             await emit_event(queue, "validator", "running", {
                 "lesson": lesson_index, "snippets": len(code_examples),

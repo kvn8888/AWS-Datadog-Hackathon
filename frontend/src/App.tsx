@@ -3,40 +3,13 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
-import { Component, type ErrorInfo, type ReactNode } from "react";
-import { CopilotKit } from "@copilotkit/react-core";
-import { CopilotSidebar } from "@copilotkit/react-ui";
-import "@copilotkit/react-ui/styles.css";
+import { type ReactNode } from "react";
 import { TopBar } from "@/components/learnforge/TopBar";
 import HomePage from "./pages/HomePage";
 import GeneratePage from "./pages/GeneratePage";
 import CoursePage from "./pages/CoursePage";
 import MonitorPage from "./pages/MonitorPage";
 import NotFound from "./pages/NotFound";
-
-// Error boundary — on CopilotKit crash, renders children WITHOUT CopilotKit
-class CopilotErrorBoundary extends Component<
-  { children: ReactNode; fallback: ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: { children: ReactNode; fallback: ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(error: Error, _info: ErrorInfo) {
-    console.warn("CopilotKit error caught (app continues without it):", error.message);
-  }
-  render() {
-    if (this.state.hasError) {
-      // Skip CopilotKit entirely, render the app without it
-      return this.props.fallback;
-    }
-    return this.props.children;
-  }
-}
 
 const queryClient = new QueryClient();
 
@@ -76,13 +49,7 @@ function CourseLayoutWithCopilot() {
 }
 
 function MaybeCopilotKit({ children }: { children: ReactNode }) {
-  return (
-    <CopilotErrorBoundary fallback={children}>
-      <CopilotKit runtimeUrl={`${BACKEND_URL}/copilotkit`}>
-        {children}
-      </CopilotKit>
-    </CopilotErrorBoundary>
-  );
+  return <>{children}</>;
 }
 
 const App = () => (

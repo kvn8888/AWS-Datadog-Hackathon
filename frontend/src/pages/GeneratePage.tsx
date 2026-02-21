@@ -13,7 +13,7 @@ interface AgentState {
 }
 
 interface LogEntry {
-  id: number;
+  id: string;
   type: LogType;
   agent: string;
   text: string;
@@ -104,7 +104,8 @@ export default function GeneratePage() {
 
   function addLog(agent: string, type: LogType, text: string) {
     logIdRef.current += 1;
-    setLogs(prev => [...prev, { id: logIdRef.current, agent, type, text }]);
+    const id = `${Date.now()}-${logIdRef.current}-${Math.random().toString(36).slice(2, 8)}`;
+    setLogs(prev => [...prev, { id, agent, type, text }]);
   }
 
   function bumpProgress(min: number) {

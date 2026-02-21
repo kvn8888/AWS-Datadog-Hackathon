@@ -10,6 +10,7 @@ Routes:
 import asyncio
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -235,6 +236,176 @@ async def test_code_endpoint(req: TestCodeRequest):
         return TestCodeResponse(**result)
     except Exception as e:
         return TestCodeResponse(passed=False, error=str(e))
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice_id: str = "male-qn-qingse"
+
+
+class ImageRequest(BaseModel):
+    prompt: str | None = None
+    aspect_ratio: str = "16:9"
+    subject_reference: list[dict[str, Any]] | None = None
+
+
+@app.post("/course/{course_id}/lesson/{lesson_index}/audio")
+async def generate_lesson_audio(course_id: str, lesson_index: int, req: TTSRequest):
+    """Generate TTS audio on demand for a lesson."""
+    import os
+
+    api_key = os.getenv("MINIMAX_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=501, detail="MINIMAX_API_KEY not configured")
+
+    course = _courses.get(course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    # Handle both dict and Pydantic model storage
+    lessons = course.lessons if hasattr(course, 'lessons') else course.get("lessons", [])
+    if lesson_index >= len(lessons):
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    # Generate audio via MiniMax
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.minimaxi.chat/v1/t2a_v2",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "speech-02-hd",
+                    "text": req.text[:5000],
+                    "voice_setting": {
+                        "voice_id": req.voice_id,
+                        "speed": 0.95,
+                    },
+                    "audio_setting": {
+                        "format": "mp3",
+                        "sample_rate": 32000,
+                    },
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            audio_url = ""
+            if isinstance(data, dict):
+                audio_url = data.get("audio_url", "")
+                if not audio_url:
+                    nested = data.get("data", {})
+                    if isinstance(nested, dict):
+                        nested_audio = nested.get("audio")
+                        if isinstance(nested_audio, dict):
+                            audio_url = nested_audio.get("audio_url", "")
+                        elif isinstance(nested_audio, str):
+                            if nested_audio.startswith("http"):
+                                audio_url = nested_audio
+                            elif len(nested_audio) > 100:
+                                audio_url = f"data:audio/mp3;base64,{nested_audio}"
+                        if not audio_url and isinstance(nested.get("audio_url"), str):
+                            audio_url = nested.get("audio_url", "")
+            elif isinstance(data, str):
+                if data.startswith("http"):
+                    audio_url = data
+
+            if not audio_url:
+                raise HTTPException(status_code=502, detail=f"No audio URL in MiniMax response: {str(data)[:160]}")
+
+            # Persist on the lesson (handle dict or model)
+            lesson = lessons[lesson_index]
+            if hasattr(lesson, 'audio_url'):
+                lesson.audio_url = audio_url
+            elif isinstance(lesson, dict):
+                lesson["audio_url"] = audio_url
+            return {"audio_url": audio_url}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"MiniMax API error: {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/course/{course_id}/lesson/{lesson_index}/image")
+async def generate_lesson_image(course_id: str, lesson_index: int, req: ImageRequest):
+    """Generate lesson concept image on demand via MiniMax."""
+    import os
+
+    api_key = os.getenv("MINIMAX_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=501, detail="MINIMAX_API_KEY not configured")
+
+    course = _courses.get(course_id)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    lessons = course.lessons if hasattr(course, 'lessons') else course.get("lessons", [])
+    if lesson_index >= len(lessons):
+        raise HTTPException(status_code=404, detail="Lesson not found")
+
+    lesson = lessons[lesson_index]
+    lesson_title = lesson.title if hasattr(lesson, 'title') else lesson.get("title", "Lesson")
+    lesson_explanation = lesson.explanation if hasattr(lesson, 'explanation') else lesson.get("explanation", "")
+
+    prompt = req.prompt or (
+        f"Clean minimal technical concept diagram for '{lesson_title}'. "
+        f"Context: {lesson_explanation[:700]}. No text overlays."
+    )
+
+    payload: dict[str, Any] = {
+        "model": "image-01",
+        "prompt": prompt,
+        "aspect_ratio": req.aspect_ratio,
+        "response_format": "base64",
+    }
+    if req.subject_reference:
+        payload["subject_reference"] = req.subject_reference
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.post(
+                "https://api.minimax.io/v1/image_generation",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            image_url = ""
+            if isinstance(data, dict):
+                if isinstance(data.get("image_url"), str):
+                    image_url = data.get("image_url", "")
+
+                nested = data.get("data")
+                if not image_url and isinstance(nested, dict):
+                    if isinstance(nested.get("image_url"), str):
+                        image_url = nested.get("image_url", "")
+                    image_b64 = nested.get("image_base64")
+                    if not image_url and isinstance(image_b64, list) and image_b64:
+                        image_url = f"data:image/jpeg;base64,{image_b64[0]}"
+                    elif not image_url and isinstance(image_b64, str):
+                        image_url = f"data:image/jpeg;base64,{image_b64}"
+
+            if not image_url:
+                raise HTTPException(status_code=502, detail=f"No image in MiniMax response: {str(data)[:160]}")
+
+            if hasattr(lesson, 'image_url'):
+                lesson.image_url = image_url
+            elif isinstance(lesson, dict):
+                lesson["image_url"] = image_url
+
+            return {"image_url": image_url}
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"MiniMax API error: {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/health")
